@@ -1592,79 +1592,170 @@ function openSearchStack() {
     }, 50);
 }
 
-// 2. HYBRID SEARCH LOGIC: Real-time results matching
+/* ============================================================
+    COMBINED MASTER SEARCH ENGINE (UNIFIED & COMPLETE)
+   ============================================================ */
+
+// 1. UNIFIED HYBRID SEARCH LOGIC
 async function handleHybridSearch() {
     const rawQuery = document.getElementById('app-search-input').value.trim();
     const tray = document.getElementById('global-search-results');
+    const subNavs = document.querySelectorAll('.library-sub-nav');
     
-    // Agar text mita diya toh screen black hi rakho
+    // Agar input khali kar diya user ne
     if (!rawQuery || rawQuery.length < 1) {
-        if(tray) tray.innerHTML = '<div style="padding:100px 40px; text-align:center; color:#444; font-size:15px; font-weight:500;"> Search for your favorite music...</div>';
+        if (tray) {
+            tray.innerHTML = '<div style="padding:100px 40px; text-align:center; color:#444; font-size:15px; font-weight:500;"> Search for your favorite music...</div>';
+        }
+        subNavs.forEach(nav => nav.style.setProperty('display', 'flex', 'important'));
         return;
     }
 
-    // Results Header
+    // Full Immersion Tray Setup
+    tray.style.cssText = `
+        display: block !important;
+        position: fixed !important;
+        top: 0 !important; left: 0 !important;
+        width: 100vw !important; height: 100vh !important;
+        background: #000 !important;
+        z-index: 10000 !important;
+        overflow-y: auto !important;
+        padding: 20px 0 160px 0 !important;
+    `;
+
+    // Dynamic Header Injection
     tray.innerHTML = `
-        <div style="padding: 20px 25px 10px 25px;">
-            <p style="color: #8e8e93; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Search results for</p>
+        <div style="padding: 60px 20px 20px 20px;">
+            <p style="color: #8e8e93; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 5px;">Search results for</p>
             <h1 style="color: white; font-size: 28px; font-weight: 800; margin: 0; letter-spacing: -1px;">"${rawQuery}"</h1>
         </div>
-        <div id="search-items-container"></div>
+        <div id="search-items-container">
+            <div style="padding:20px; text-align:center; color:#8e8e93; font-size:13px;"> Searching...</div>
+        </div>
     `;
 
     const resultsContainer = document.getElementById('search-items-container');
-    let seenNames = new Set();
-    let matchesFound = false;
-    let queryLower = rawQuery.toLowerCase();
+    subNavs.forEach(nav => nav.style.setProperty('display', 'none', 'important'));
 
-    // A. Search Cloud Cache
-    const cloudMatches = (window.cloudMusicCache || []).filter(s => 
-        s.name.toLowerCase().includes(queryLower) || (s.artist && s.artist.toLowerCase().includes(queryLower))
-    );
+    try {
+        let seenNames = new Set();
+        let matchesFound = false;
+        let queryLower = rawQuery.toLowerCase();
 
-    cloudMatches.forEach(song => {
-        renderSearchRow(song.name, song.artist, song.img, song, 'cloudinary', resultsContainer);
-        seenNames.add(song.name.toLowerCase());
-        matchesFound = true;
-    });
+        // 1. Search Cloud Cache (Cloudinary)
+        const cloudMatches = (window.cloudMusicCache || []).filter(s => 
+            s.name.toLowerCase().includes(queryLower) || (s.artist && s.artist.toLowerCase().includes(queryLower))
+        );
+        
+        resultsContainer.innerHTML = ''; // Loading placeholder hatao
 
-    // B. Search Google Drive
-    if (typeof gapi !== 'undefined' && gapi.client.drive && accessToken) {
-        try {
-            const driveRes = await gapi.client.drive.files.list({
-                'q': `'${DRIVE_FOLDER_ID}' in parents and name contains '${rawQuery}' and trashed = false`,
-                'fields': 'files(id, name)', 'pageSize': 6
-            });
-            for (const file of (driveRes.result.files || [])) {
-                let clean = file.name.replace(/\.[^/.]+$/, "");
-                if(!seenNames.has(clean.toLowerCase())) {
-                    const meta = await fetchMusicMeta(null, clean);
-                    renderSearchRow(meta.title || clean, "Google Drive", meta.artwork || defaultImg, file.id, 'drive', resultsContainer);
-                    matchesFound = true;
+        cloudMatches.forEach(song => {
+            renderSearchRow(song.name, song.artist, song.img, song, 'cloudinary', resultsContainer);
+            seenNames.add(song.name.toLowerCase());
+            matchesFound = true;
+        });
+
+        // 2. Search Google Drive
+        if (typeof gapi !== 'undefined' && gapi.client.drive && accessToken) {
+            try {
+                const driveRes = await gapi.client.drive.files.list({
+                    'q': `'${DRIVE_FOLDER_ID}' in parents and name contains '${rawQuery}' and trashed = false`,
+                    'fields': 'files(id, name)', 
+                    'pageSize': 6
+                });
+                for (const file of (driveRes.result.files || [])) {
+                    let clean = file.name.replace(/\.[^/.]+$/, "");
+                    if (!seenNames.has(clean.toLowerCase())) {
+                        const meta = await fetchMusicMeta(null, clean);
+                        renderSearchRow(meta.title || clean, "Google Drive", meta.artwork || defaultImg, file.id, 'drive', resultsContainer);
+                        seenNames.add(clean.toLowerCase());
+                        matchesFound = true;
+                    }
                 }
+            } catch (driveErr) {
+                console.error("Drive Search Error:", driveErr);
             }
-        } catch (e) { console.error("Drive Search Error", e); }
-    }
+        }
 
-    if (!matchesFound) {
-        resultsContainer.innerHTML = `<div style="text-align:center; padding:100px 40px; color:#666;">No results for "${rawQuery}"</div>`;
+        // Empty state
+        if (!matchesFound) {
+            resultsContainer.innerHTML = `<div style="text-align:center; padding:100px 40px; color:#666; font-size:14px;">No results for "${rawQuery}"</div>`;
+        }
+    } catch (err) {
+        console.error("Hybrid Search Error:", err);
     }
 }
 
-// 3. FINISH SEARCH: Jab keyboard ka "Enter/Return" dabaye
+// 2. SEARCH ROW RENDERER
+function renderSearchRow(title, artist, img, data, type, target) {
+    const div = document.createElement('div');
+    div.className = 'song-item'; 
+    div.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; width: 100%; box-sizing: border-box;";
+    
+    let action, badge, indexForMenu;
+    if (type === 'cloudinary') {
+        action = `playSelectedCloudSong(${JSON.stringify(data).replace(/"/g, '&quot;')})`;
+        badge = '☁️ Cloud';
+        indexForMenu = 0; 
+    } else if (type === 'drive') {
+        action = `fetchMusicMeta('${data}', '${title.replace(/'/g, "\\'")}')`;
+        badge = '📁 Drive';
+        indexForMenu = data;
+    } else {
+        badge = '💿 Library';
+        action = `loadSong(${data}); maximizePlayer();`;
+        indexForMenu = data;
+    }
+
+    div.innerHTML = `
+        <div class="song-info-container" onclick="${action}" style="display: flex !important; align-items: center !important; flex: 1 !important; padding: 0px 10px !important; cursor: pointer;">
+            <img src="${img}" style="width: 48px !important; height: 48px !important; border-radius: 6px !important; object-fit: cover !important; flex-shrink: 0 !important;">
+            <div style="margin-left: 14px !important; display: flex !important; flex-direction: column !important; justify-content: center !important; overflow: hidden !important; flex: 1 !important;">
+                <h4 style="font-size: 15px !important; margin: 0 !important; color: white !important; white-space: nowrap !important; text-overflow: ellipsis !important; overflow: hidden !important; font-weight: 500 !important; line-height: 1.2 !important;">${title}</h4>
+                <p style="font-size: 12px !important; margin: 3px 0 0 !important; color: #8e8e93 !important; white-space: nowrap !important; text-overflow: ellipsis !important; overflow: hidden !important;">${badge} • ${artist}</p>
+            </div>
+        </div>
+
+        <div class="song-menu-btn" onclick="event.stopPropagation(); openSongMenu(event, ${indexForMenu})" style="padding: 10px 16px !important; display: flex !important; align-items: center !important; cursor: pointer;">
+            <i class="fas fa-ellipsis-v" style="color: #8e8e93 !important; font-size: 14px !important;"></i>
+        </div>
+    `;
+    target.appendChild(div);
+}
+
+// 3. CLOUD PLAYBACK EXECUTION
+function playSelectedCloudSong(song) {
+    let existingIndex = playlist.findIndex(p => p.url === song.url);
+    
+    if (existingIndex === -1) {
+        playlist.push(song);
+        currentIndex = playlist.length - 1;
+    } else {
+        currentIndex = existingIndex;
+    }
+
+    savePlaylistToDisk();
+    renderPlaylist();
+    loadSong(currentIndex);
+    maximizePlayer();
+    
+    const tray = document.getElementById('global-search-results');
+    if (tray) tray.style.display = 'none';
+}
+
+// 4. KEYBOARD DISMISS ON ENTER
 function finishSearch() {
     const sStack = document.getElementById('search-stack');
     const tStack = document.getElementById('tab-stack');
     const input = document.getElementById('app-search-input');
 
-    if(input) input.blur(); //  KEYBOARD DOWN
+    if (input) input.blur();
 
     document.body.classList.remove('search-active');
     if (sStack) sStack.style.display = 'none';
     if (tStack) tStack.style.display = 'flex';
 
     searchOpen = false;
-    // Tray black hi rahega taaki results dikhein
 }
 
 // 4. CLOSE SEARCH: Everything reset to normal (Exit Search)
