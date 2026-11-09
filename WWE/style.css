@@ -192,7 +192,7 @@ body {
     aspect-ratio: 1/1; 
     
     /* 2. POSITION: Center align aur Top se gap */
-    margin: 15px auto 5px auto !important; /* Top margin badhane se image niche aayegi */
+    margin: 17px auto 5px auto !important; /* Top margin badhane se image niche aayegi */
     
     /* 3. LOOK: Apple style rounding aur shadow */
     overflow: hidden; 
@@ -1644,3 +1644,147 @@ body.search-active #global-search-results {
     z-index: 10 !important;
 }
 
+/* ================= HORIZONTAL PLAYER: COVER LEFT + (LYRICS + CONTROLS) RIGHT ================= */
+@media screen and (orientation: landscape) and (max-height: 500px) {
+    #player-screen {
+        display: flex !important;
+        flex-direction: column !important;
+        height: 100vh !important;
+        width: 100vw !important;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
+        box-sizing: border-box !important;
+        overflow: hidden !important;
+        background: #000;
+    }
+
+    /* Unnecessary bars hide */
+    #player-screen .drag-handle,
+    #player-screen .top-bar,
+    #mini-player,
+    #bottom-navigation-container {
+        display: none !important;
+    }
+
+    /* 2 Main Columns */
+    #player-screen .player-content {
+        display: grid !important;
+        grid-template-columns: 42vw 1fr !important;
+        grid-template-rows: 1fr !important;
+        column-gap: 25px !important;
+        height: 100% !important;
+        width: 100% !important;
+        padding: 15px 25px !important;
+        box-sizing: border-box !important;
+        align-items: center !important;
+    }
+
+    /* LEFT: Album Artwork */
+    #player-screen .banner-container {
+        grid-column: 1 !important;
+        height: 82vh !important;
+        width: 82vh !important;
+        max-width: 100% !important;
+        margin: auto !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    #player-screen #song-image {
+        width: 100% !important;
+        height: 100% !important;
+        aspect-ratio: 1 / 1 !important;
+        border-radius: 14px !important;
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7) !important;
+        object-fit: cover !important;
+    }
+
+    /* RIGHT COLUMN: Lyrics (Top) */
+    #player-screen #synced-lyrics-view {
+        grid-column: 2 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        height: 48vh !important;
+        width: 100% !important;
+        overflow-y: auto !important;
+        -webkit-overflow-scrolling: touch !important;
+        margin-bottom: 8px !important;
+        mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, transparent 100%) !important;
+        -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, transparent 100%) !important;
+    }
+
+    #player-screen #synced-lyrics-view .lyrics-wrapper {
+        padding: 20px 0 !important;
+    }
+
+    /* RIGHT COLUMN: Song Info (Title, Artist, Like) */
+    #player-screen .song-info-area {
+        grid-column: 2 !important;
+        display: flex !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        margin: 2px 0 6px 0 !important;
+        padding: 0 5px !important;
+    }
+
+    #player-screen #player-title {
+        font-size: 18px !important;
+        font-weight: 700 !important;
+        margin: 0 !important;
+        color: #fff !important;
+    }
+
+    #player-screen #player-artist {
+        font-size: 12px !important;
+        color: #8e8e93 !important;
+        margin: 2px 0 0 0 !important;
+    }
+
+    /* RIGHT COLUMN: Progress & Playback Controls (Bottom) */
+    #player-screen .controls-wrapper {
+        grid-column: 2 !important;
+        width: 100% !important;
+        margin: 0 !important;
+    }
+
+    #player-screen #seek-bar {
+        width: 100% !important;
+        height: 4px !important;
+        accent-color: #fff !important;
+    }
+
+    #player-screen .time-stamps {
+        display: flex !important;
+        justify-content: space-between !important;
+        font-size: 10px !important;
+        color: #8e8e93 !important;
+        margin-top: 3px !important;
+    }
+
+    #player-screen .main-controls {
+        display: flex !important;
+        justify-content: space-around !important;
+        align-items: center !important;
+        margin-top: 8px !important;
+    }
+
+    #player-screen .main-controls i {
+        font-size: 18px !important;
+        color: #fff !important;
+    }
+
+    #player-screen .play-trigger {
+        width: 46px !important;
+        height: 46px !important;
+        background: #fff !important;
+        border-radius: 50% !important;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    #player-screen .play-trigger i {
+        color: #000 !important;
+        font-size: 18px !important;
+    }
+}
