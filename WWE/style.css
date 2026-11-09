@@ -192,11 +192,11 @@ body {
     aspect-ratio: 1/1; 
     
     /* 2. POSITION: Center align aur Top se gap */
-    margin: 17px auto 5px auto !important; /* Top margin badhane se image niche aayegi */
+    margin: 50px auto 5px auto !important; /* Top margin badhane se image niche aayegi */
     
     /* 3. LOOK: Apple style rounding aur shadow */
     overflow: hidden; 
-    border-radius: 20px !important; /* Zyada round corner Apple style ke liye */
+    border-radius: 10px !important; /* Zyada round corner Apple style ke liye */
     box-shadow: 0 px px rgba(0,0,0,0.6); /* Deep shadow premium feel ke liye */
     
     flex-shrink: 0; /* Isse image pichakne se bachegi */
@@ -1644,7 +1644,7 @@ body.search-active #global-search-results {
     z-index: 10 !important;
 }
 
-/* ================= HORIZONTAL PLAYER: COVER LEFT + (LYRICS + CONTROLS) RIGHT ================= */
+ /* ================= HORIZONTAL PLAYER: 2-COLUMN GRID (NO DISAPPEAR FIX) ================= */
 @media screen and (orientation: landscape) and (max-height: 500px) {
     #player-screen {
         display: flex !important;
@@ -1654,10 +1654,9 @@ body.search-active #global-search-results {
         padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left) !important;
         box-sizing: border-box !important;
         overflow: hidden !important;
-        background: #000;
+        background: #00 !important;
     }
 
-    /* Unnecessary bars hide */
     #player-screen .drag-handle,
     #player-screen .top-bar,
     #mini-player,
@@ -1665,108 +1664,140 @@ body.search-active #global-search-results {
         display: none !important;
     }
 
-    /* 2 Main Columns */
+    /* 2 Columns: Col 1 = 40% width (Cover), Col 2 = 60% width (Right Stack) */
     #player-screen .player-content {
         display: grid !important;
-        grid-template-columns: 42vw 1fr !important;
-        grid-template-rows: 1fr !important;
-        column-gap: 25px !important;
-        height: 100% !important;
+        grid-template-columns: minmax(260px, 40vw) 1fr !important;
+        grid-template-rows: 1fr auto auto !important; /* Row 1: Lyrics, Row 2: Info, Row 3: Controls */
+        column-gap: 30px !important;
+        row-gap: 8px !important;
         width: 100% !important;
-        padding: 15px 25px !important;
+        height: 100% !important;
+        padding: 15px 30px 15px 25px !important;
         box-sizing: border-box !important;
         align-items: center !important;
     }
 
-    /* LEFT: Album Artwork */
+    /* ================= LEFT COLUMN: ALBUM ARTWORK ================= */
     #player-screen .banner-container {
         grid-column: 1 !important;
-        height: 82vh !important;
-        width: 82vh !important;
-        max-width: 100% !important;
-        margin: auto !important;
+        grid-row: 1 / span 3 !important; /* Teeno rows ke barabar vertical stretch */
         display: flex !important;
         align-items: center !important;
         justify-content: center !important;
+        width: 100% !important;
+        height: 100% !important;
+        margin: 0 !important;
     }
 
     #player-screen #song-image {
-        width: 100% !important;
-        height: 100% !important;
+        width: auto !important;
+        height: auto !important;
+        max-width: 90% !important;
+        max-height: 82vh !important;
         aspect-ratio: 1 / 1 !important;
-        border-radius: 14px !important;
-        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.7) !important;
+        border-radius: 16px !important;
         object-fit: cover !important;
+        box-shadow: 0 12px 35px rgba(0, 0, 0, 0.8) !important;
     }
 
-    /* RIGHT COLUMN: Lyrics (Top) */
+    /* ================= RIGHT COLUMN: ROW 1 (LYRICS) ================= */
     #player-screen #synced-lyrics-view {
         grid-column: 2 !important;
-        display: flex !important;
-        flex-direction: column !important;
-        height: 48vh !important;
+        grid-row: 1 !important;
+        display: block !important;
+        visibility: visible !important;
+        opacity: 1 !important;
         width: 100% !important;
+        height: 100% !important;
+        max-height: 48vh !important; /* Lyrics area ki height */
         overflow-y: auto !important;
         -webkit-overflow-scrolling: touch !important;
-        margin-bottom: 8px !important;
         mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, transparent 100%) !important;
         -webkit-mask-image: linear-gradient(180deg, transparent 0%, rgba(0,0,0,1) 15%, rgba(0,0,0,1) 85%, transparent 100%) !important;
+        margin: 0 !important;
     }
 
     #player-screen #synced-lyrics-view .lyrics-wrapper {
-        padding: 20px 0 !important;
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        padding: 15px 0 !important;
     }
 
-    /* RIGHT COLUMN: Song Info (Title, Artist, Like) */
+    /* ================= RIGHT COLUMN: ROW 2 (SONG INFO) ================= */
     #player-screen .song-info-area {
         grid-column: 2 !important;
+        grid-row: 2 !important;
         display: flex !important;
         justify-content: space-between !important;
         align-items: center !important;
-        margin: 2px 0 6px 0 !important;
-        padding: 0 5px !important;
+        width: 100% !important;
+        margin-top: 5px !important;
+        margin-bottom: 2px !important;
+        padding: 0 4px !important;
+        box-sizing: border-box !important;
     }
 
     #player-screen #player-title {
         font-size: 18px !important;
         font-weight: 700 !important;
-        margin: 0 !important;
         color: #fff !important;
+        margin: 0 !important;
+        line-height: 1.2 !important;
     }
 
     #player-screen #player-artist {
-        font-size: 12px !important;
+        font-size: 13px !important;
         color: #8e8e93 !important;
         margin: 2px 0 0 0 !important;
     }
 
-    /* RIGHT COLUMN: Progress & Playback Controls (Bottom) */
+    #player-screen #like-btn {
+        font-size: 22px !important;
+        color: #fff !important;
+    }
+
+    /* ================= RIGHT COLUMN: ROW 3 (CONTROLS) ================= */
     #player-screen .controls-wrapper {
         grid-column: 2 !important;
+        grid-row: 3 !important;
+        display: flex !important;
+        flex-direction: column !important;
         width: 100% !important;
         margin: 0 !important;
+        padding: 0 4px !important;
+        box-sizing: border-box !important;
     }
 
     #player-screen #seek-bar {
         width: 100% !important;
         height: 4px !important;
+        margin: 0 !important;
         accent-color: #fff !important;
     }
 
     #player-screen .time-stamps {
         display: flex !important;
         justify-content: space-between !important;
-        font-size: 10px !important;
+        font-size: 11px !important;
         color: #8e8e93 !important;
         margin-top: 3px !important;
+        margin-bottom: 0px !important;
     }
 
-    #player-screen .main-controls {
-        display: flex !important;
-        justify-content: space-around !important;
-        align-items: center !important;
-        margin-top: 8px !important;
-    }
+#player-screen .main-controls {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    width: 100% !important;
+    padding: 0 10px !important;
+    box-sizing: border-box !important;
+
+    /* 👇 Isko add karo: jitna uper uthana ho utne pixels badha lo */
+    margin-bottom: 40px !important; 
+}
+
 
     #player-screen .main-controls i {
         font-size: 18px !important;
@@ -1774,8 +1805,8 @@ body.search-active #global-search-results {
     }
 
     #player-screen .play-trigger {
-        width: 46px !important;
-        height: 46px !important;
+        width: 44px !important;
+        height: 44px !important;
         background: #fff !important;
         border-radius: 50% !important;
         display: flex !important;
