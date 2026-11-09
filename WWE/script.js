@@ -848,6 +848,32 @@ function maximizePlayer() {
 
 /* =================  CORE PLAYER LOGIC (RELOAD & LAG FIX) ================= */
 /* =================  CORE PLAYER LOGIC (RELOAD & NATURE ENGINE FIX) ================= */
+//  Quick Smooth Fade-out Helper
+function fadeOutAudio(durationMs = 180) {
+    return new Promise((resolve) => {
+        if (!audio || audio.paused || audio.volume <= 0) {
+            resolve();
+            return;
+        }
+        const startVolume = audio.volume;
+        const stepTime = 20;
+        const stepDec = startVolume / (durationMs / stepTime);
+
+        const fadeTimer = setInterval(() => {
+            if (audio.volume > stepDec) {
+                audio.volume -= stepDec;
+            } else {
+                audio.volume = 0;
+                audio.pause();
+                clearInterval(fadeTimer);
+                audio.volume = startVolume; // Volume reset for next song
+                resolve();
+            }
+        }, stepTime);
+    });
+}
+
+
 async function loadSong(index) {
     currentIndex = index;
     const s = playlist[index];
@@ -2616,8 +2642,10 @@ if(coverUploadInput) {
 }
 
 // 4. LOCK SCREEN BRANDING
+/* =================  LOCK SCREEN CONTROLS & BRANDING ================= */
 async function updateMediaSession(s) {
     if (!('mediaSession' in navigator)) return;
+
     const getBrandedImg = (imgSrc) => {
         return new Promise((resolve) => {
             const canvas = document.createElement('canvas');
@@ -2637,12 +2665,30 @@ async function updateMediaSession(s) {
             img.onerror = () => resolve(imgSrc);
         });
     };
+
     const brandedCover = await getBrandedImg(s.img || defaultImg);
+
+    // 1. Metadata Set
     navigator.mediaSession.metadata = new MediaMetadata({
-        title: s.name, artist: s.artist, album: " Music",
+        title: s.name,
+        artist: s.artist,
+        album: " Music",
         artwork: [{ src: brandedCover, sizes: '512x512', type: 'image/jpeg' }]
     });
+
+    // 2. 🟢 ACTION HANDLERS: Next & Prev enforce karo (Isse 10s buttons hat jayenge)
+    navigator.mediaSession.setActionHandler('play', () => togglePlay());
+    navigator.mediaSession.setActionHandler('pause', () => togglePlay());
+    navigator.mediaSession.setActionHandler('previoustrack', () => prevSong());
+    navigator.mediaSession.setActionHandler('nexttrack', () => nextSong());
+
+    // Seek buttons ko explicit null kar do taaki iOS 10s forward/rewind render na kare
+    try {
+        navigator.mediaSession.setActionHandler('seekbackward', null);
+        navigator.mediaSession.setActionHandler('seekforward', null);
+    } catch (e) {}
 }
+
 
 // --- LYRICS ENGINE START ---
 
