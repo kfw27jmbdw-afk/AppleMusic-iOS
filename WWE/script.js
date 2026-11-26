@@ -1124,53 +1124,58 @@ function seekSong() {
 
 
 
-/* ================= STEP 1: MODAL & STORAGE CORE ================= */
+/* ================= STEP 1: MODAL & STORAGE CORE (UNIQUE KEY FIX) ================= */
 
-/**
- * Gaane ka menu khulne par ya Player se '+' dabane par modal dikhao
- */
+function getSongKey(song) {
+    if (!song) return null;
+    if (song.driveId) return `drive:${song.driveId}`;
+    if (song.localId) return `local:${song.localId}`;
+    return song.url || song.name;
+}
+
+function resolveSongIndex(entry) {
+    if (typeof entry === 'number') return entry;
+    return playlist.findIndex(s => s && getSongKey(s) === entry);
+}
+
+function hasSongInList(list, songIndex) {
+    if (!Array.isArray(list)) return false;
+    const song = playlist[songIndex];
+    const key = getSongKey(song);
+    return list.includes(key) || list.includes(songIndex);
+}
+
 function handleMenuAddPlaylist() {
-    // 1. Purana menu band karo
     const songMenu = document.getElementById('song-options-menu');
     if(songMenu) songMenu.style.display = 'none'; 
 
-    // 2. Index set karo (selectedMenuIndex playlist list se aata hai)
     currentModalIndex = selectedMenuIndex; 
-    
-    if (currentModalIndex === null) return;
+    if (currentModalIndex === null || currentModalIndex === undefined) return;
 
     const song = playlist[currentModalIndex];
+    if (!song) return;
 
-    // 3. Modal UI mein gaane ka naam aur artist update karo
     document.getElementById('modal-song-name').innerText = song.name;
     document.getElementById('modal-song-artist').innerText = song.artist;
 
-    // 4. Tick status update karo (Check karo ki library/fav mein pehle se hai ya nahi)
-    updateTickUI('library', userLibrary.songs.includes(currentModalIndex));
-    updateTickUI('favourite', userLibrary.favourites.includes(currentModalIndex));
+    updateTickUI('library', hasSongInList(userLibrary.songs, currentModalIndex));
+    updateTickUI('favourite', hasSongInList(userLibrary.favourites, currentModalIndex));
 
-    // 5. Playlists ki list Modal ke andar dikhao
     renderModalPlaylists();
-
-    // 6. Modal ko screen par show karo
-    document.getElementById('action-modal').style.display = 'block';
+    document.getElementById('action-modal').style.display = 'flex';
 }
 
-/**
- * Modal ke andar Playlists render karne ka logic
- */
 function renderModalPlaylists() {
     const container = document.getElementById('modal-playlists-list');
     if(!container) return;
     container.innerHTML = "";
 
     Object.keys(userLibrary.playlists).forEach(name => {
-        // Possibility: Check if song is already in this specific playlist
-        const isAdded = userLibrary.playlists[name].includes(currentModalIndex);
+        const isAdded = hasSongInList(userLibrary.playlists[name], currentModalIndex);
         const safeId = name.replace(/\s/g, '');
         
         container.innerHTML += `
-            <div class="modal-option" onclick="toggleTick('playlist', '${name}')">
+            <div class="modal-option" onclick="toggleTick('playlist', '${name.replace(/'/g, "\\'")}')">
                 <i class="fas fa-list-ul"></i>
                 <span>${name}</span>
                 <i class="fas fa-check-circle tick-icon ${isAdded ? 'active' : ''}" id="tick-pl-${safeId}"></i>
@@ -1180,86 +1185,73 @@ function renderModalPlaylists() {
 
 /* ================= STEP 2: TICK TOGGLE & STORAGE ================= */
 
-/**
- * Kisi playlist ya library mein gaana add ya remove (toggle) karna
- */
 function toggleTick(type, playlistName = null) {
-    // 1. Tick icon ki ID dhoondho (Playlist ke liye alag, Fav/Library ke liye alag)
     const tickId = playlistName ? `tick-pl-${playlistName.replace(/\s/g, '')}` : `tick-${type}`;
     const tickIcon = document.getElementById(tickId);
-    
     if (!tickIcon) return;
 
-    // Check karo ki icon pehle se active (Red/Green) hai ya nahi
+    const song = playlist[currentModalIndex];
+    const songKey = getSongKey(song);
+    if (!songKey) return;
+
     const isActive = tickIcon.classList.contains('active');
     
     if (playlistName) {
-        // POSSIBLITY 1: Playlist logic
         if (!isActive) {
-            // Agar active nahi hai, toh array mein push karo
-            userLibrary.playlists[playlistName].push(currentModalIndex);
+            if (!hasSongInList(userLibrary.playlists[playlistName], currentModalIndex)) {
+                userLibrary.playlists[playlistName].push(songKey);
+            }
             tickIcon.classList.add('active');
         } else {
-            // Agar pehle se hai, toh filter karke nikal do (Untick)
-            userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(idx => idx !== currentModalIndex);
+            userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(item => item !== songKey && item !== currentModalIndex);
             tickIcon.classList.remove('active');
         }
     } else {
-        // POSSIBLITY 2: Library aur Favourite logic
         const targetArray = type === 'library' ? userLibrary.songs : userLibrary.favourites;
         if (!isActive) {
-            targetArray.push(currentModalIndex);
+            if (!hasSongInList(targetArray, currentModalIndex)) {
+                targetArray.push(songKey);
+            }
             tickIcon.classList.add('active');
         } else {
-            const index = targetArray.indexOf(currentModalIndex);
-            if (index > -1) targetArray.splice(index, 1);
+            const filtered = targetArray.filter(item => item !== songKey && item !== currentModalIndex);
+            if (type === 'library') userLibrary.songs = filtered;
+            else userLibrary.favourites = filtered;
             tickIcon.classList.remove('active');
         }
     }
 
-    // SABSE IMPORTANT: Har badlav ke baad storage mein save karo
     saveLibraryToDisk();
-    
-    // Agar Library screen khuli hai, toh use piche refresh kar do taaki change dikhe
+    if(typeof renderHomeScreen === "function") renderHomeScreen();
     if(document.getElementById('library-screen').style.display === 'block') {
         renderLibraryContent('playlists'); 
     }
 }
 
-/**
- * Tick UI status update (Simple helper)
- */
 function updateTickUI(type, status) {
     const tick = document.getElementById(`tick-${type}`);
     if(tick) status ? tick.classList.add('active') : tick.classList.remove('active');
 }
+
 /* ================= STEP 3: PLAYLIST DETAIL & OPEN LOGIC ================= */
 
-/**
- * Kisi specific playlist par click karne par uske andar ke gaane dikhana
- */
-/**
- * Kisi specific playlist par click karne par uske andar ke gaane dikhana
- */
-
-/* ================= FINAL UPDATED OPEN PLAYLIST DETAIL (FIXED) ================= */
 function openPlaylistDetail(playlistName) {
     const container = document.getElementById('library-content-area');
     const subNavs = document.querySelectorAll('.library-sub-nav');
     
-    // 1. UI Clean-up
     const libHeader = document.querySelector('.library-header');
     if(libHeader) libHeader.style.display = 'none'; 
     
     subNavs.forEach(nav => nav.style.setProperty('display', 'none', 'important'));
     container.classList.remove('grid-view');
 
-    const songIndices = userLibrary.playlists[playlistName] || [];
+    const songEntries = userLibrary.playlists[playlistName] || [];
+    const validIndices = songEntries.map(entry => resolveSongIndex(entry)).filter(idx => idx !== -1 && playlist[idx]);
+
     const thumb = (userLibrary.playlistThumbs && userLibrary.playlistThumbs[playlistName]) 
                   ? userLibrary.playlistThumbs[playlistName] 
                   : 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300';
 
-    // 2. Header Render
     container.innerHTML = `
         <div class="playlist-detail-header" id="playlist-header-bg" 
              style="display: flex; flex-direction: column; align-items: center; padding: 10px 20px; margin-top: 0; transition: background 0.5s ease;">
@@ -1273,17 +1265,17 @@ function openPlaylistDetail(playlistName) {
                 </div>
             </div>
 
-            <input type="file" id="pl-cover-upload" hidden accept="image/*" onchange="uploadPlaylistCover(event, '${playlistName}')">
+            <input type="file" id="pl-cover-upload" hidden accept="image/*" onchange="uploadPlaylistCover(event, '${playlistName.replace(/'/g, "\\'")}')">
 
             <img id="pl-detail-img" src="${thumb}" 
                  style="width: 170px; height: 170px; border-radius: 6px; object-fit: cover; box-shadow: 0 10px 35px rgba(0,0,0,0.6);">
             
             <div style="text-align: center; margin-top: 12px;">
                 <h1 style="font-size: 24px; font-weight: 800; color: white; margin: 0; letter-spacing: -0.5px;">${playlistName}</h1>
-                <p style="color: rgba(255,255,255,0.6); margin-top: 2px; font-size: 12px; font-weight: 500;">Playlist • ${songIndices.length} songs</p>
+                <p style="color: rgba(255,255,255,0.6); margin-top: 2px; font-size: 12px; font-weight: 500;">Playlist • ${validIndices.length} songs</p>
             </div>
             
-            <div onclick="deletePlaylist('${playlistName}')" style="margin-top: 8px; color: rgba(255,255,255,0.25); cursor:pointer; font-size: 11px;">
+            <div onclick="deletePlaylist('${playlistName.replace(/'/g, "\\'")}')" style="margin-top: 8px; color: rgba(255,255,255,0.25); cursor:pointer; font-size: 11px;">
                 <i class="fas fa-trash"></i> Delete
             </div>
         </div>
@@ -1294,16 +1286,14 @@ function openPlaylistDetail(playlistName) {
     updatePlaylistAdaptiveColor(thumb);
 
     const listArea = document.getElementById('playlist-internal-songs');
-    if (songIndices.length === 0) {
+    if (validIndices.length === 0) {
         listArea.innerHTML = `<p style="text-align:center; padding:40px; color:#666;">No songs yet.</p>`;
     } else {
-        songIndices.forEach(idx => {
+        validIndices.forEach(idx => {
             const song = playlist[idx];
-            
-            // 🟢 SAFETY CHECK: Agar gaana undefined hai toh skip karo
             if (!song) return; 
 
-                     const div = document.createElement('div');
+            const div = document.createElement('div');
             div.className = "song-item";
             div.id = `song-item-${idx}`; 
             div.innerHTML = `
@@ -1316,117 +1306,109 @@ function openPlaylistDetail(playlistName) {
                 </div>
                 <div style="display: flex; align-items: center; gap: 15px;">
                     <div class="status-container"></div>
-                    <div class="song-menu-btn" onclick="confirmRemoveFromPlaylist(event, '${playlistName}', ${idx})">
+                    <div class="song-menu-btn" onclick="confirmRemoveFromPlaylist(event, '${playlistName.replace(/'/g, "\\'")}', ${idx})">
                         <i class="fas fa-trash-alt" style="color: rgba(255,255,255,0.15); font-size: 13px;"></i>
                     </div>
                 </div>`;
             listArea.appendChild(div);
-
         });
     }
     updatePlayingUI();
 }
 
-
-/* ================= UI SYNC FUNCTION ================= */
 function updatePlayingUI() {
-    // 1. Purani saari highlights aur animations hatao
     document.querySelectorAll('.song-item h4').forEach(h4 => h4.style.color = 'white');
     document.querySelectorAll('.playing-animation').forEach(a => a.remove());
 
     if (!audio || !audio.src) return;
 
-    // 2. Sabhi gaano ki list mein current gaana dhoondho
     const allItems = document.querySelectorAll('.song-item');
-    allItems.forEach((item, idx) => {
+    allItems.forEach((item) => {
         const infoContainer = item.querySelector('.song-info-container');
         const onclickAttr = infoContainer ? infoContainer.getAttribute('onclick') : null;
         const match = onclickAttr ? onclickAttr.match(/loadSong\((\d+)\)/) : null;
         
         if (match && parseInt(match[1]) === currentIndex) {
-            // 3. Naam ko green karo
             const title = item.querySelector('h4');
             if (title) title.style.color = '#1DB954';
 
-            // 4. Animation bars ko yahan dalo (Inject bars)
             const statusContainer = item.querySelector('.status-container') || item.querySelector('div[style*="display: flex"]');
             if (statusContainer) {
                 const isPaused = audio.paused;
-                // Pehle check karo animation hai ya nahi, fir dalo
                 if (!statusContainer.querySelector('.playing-animation')) {
                     const animDiv = document.createElement('div');
                     animDiv.className = `playing-animation ${isPaused ? 'paused' : ''}`;
                     animDiv.innerHTML = `<span></span><span></span><span></span>`;
-                    statusContainer.prepend(animDiv); // Bars ko menu button se pehle dalo
+                    statusContainer.prepend(animDiv);
                 }
             }
         }
     });
 }
 
-
-
-
-/**
- * Playlist detail se wapas Library par jaane ka logic
- */
 function backToLibraryPlaylists() {
-    // 1. Ye lines buttons (Download, Playlist, Fav) ko wapas dikhati hain
     const subNavs = document.querySelectorAll('.library-sub-nav');
     subNavs.forEach(nav => nav.style.setProperty('display', 'flex', 'important'));
-    
-    // 2. Full screen color ko wapas default black karo
-    // document.documentElement use karne se upar ka black area bhi reset hoga
     document.documentElement.style.setProperty('--pl-pl-bg-color', '#121212');
     document.documentElement.style.setProperty('--pl-bg-color', '#121212');
-    
-    // 3. Wapas library ki main screen par jao
     switchLibraryView('playlists');
 }
 
-
-
-/**
- * Playlist ke andar se gaana delete karne ka logic
- */
 function confirmRemoveFromPlaylist(e, playlistName, songIdx) {
     e.stopPropagation();
     if(confirm("Remove this song from " + playlistName + "?")) {
-        userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(idx => idx !== songIdx);
+        const songKey = getSongKey(playlist[songIdx]);
+        userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(item => item !== songKey && item !== songIdx);
         saveLibraryToDisk();
-        openPlaylistDetail(playlistName); // UI Refresh
+        openPlaylistDetail(playlistName);
     }
 }
 
 /* ================= STEP 4: CREATE PLAYLIST POPUP LOGIC ================= */
 
-/**
- * Nayi playlist confirm karke gaana auto-add karne ka logic
- */
+function saveAndCloseModal() {
+    const modal = document.getElementById('action-modal');
+    if(modal) modal.style.display = 'none';
+    currentModalIndex = null;
+}
+
+function showNewPlaylistPrompt() {
+    const promptModal = document.getElementById('playlist-name-modal');
+    if (promptModal) {
+        promptModal.style.display = 'flex';
+        const input = document.getElementById('new-playlist-input');
+        if (input) input.focus();
+    }
+}
+
+function closePlaylistPrompt() {
+    const promptModal = document.getElementById('playlist-name-modal');
+    if (promptModal) {
+        promptModal.style.display = 'none';
+        const input = document.getElementById('new-playlist-input');
+        if (input) input.value = "";
+    }
+}
+
 function confirmCreatePlaylist() {
     const nameInput = document.getElementById('new-playlist-input');
     const name = nameInput.value.trim();
 
     if (name) {
-        // 1. Check karo agar ye naam pehle se toh nahi hai
         if (!userLibrary.playlists[name]) {
+            const songKey = getSongKey(playlist[currentModalIndex]);
+            userLibrary.playlists[name] = songKey ? [songKey] : [];
             
-            // 2. Nayi playlist array banao aur current gaana dalo
-            userLibrary.playlists[name] = [currentModalIndex]; 
+            saveLibraryToDisk();
             
-            // 3. Storage mein permanent save karo
-            saveLibraryToDisk(); 
-            
-            // 4. UI saaf karo aur popups band karo
             nameInput.value = "";
             document.getElementById('playlist-name-modal').style.display = 'none';
             document.getElementById('action-modal').style.display = 'none';
             
-            alert(`Playlist "${name}" created and song added!`);
-            
-            // 5. Agar user Library screen par hai, toh turant refresh karo
+            showTempMessage(` Playlist "${name}" created!`);
+            if(typeof renderHomeScreen === "function") renderHomeScreen();
             if(document.getElementById('library-screen').style.display === 'block') {
-                renderLibraryContent('playlists'); 
+                renderLibraryContent('playlists');
             }
         } else {
             alert("This playlist name already exists!");
@@ -1436,96 +1418,18 @@ function confirmCreatePlaylist() {
     }
 }
 
-/**
- * Modal band karne ka simple helper function
- */
-function saveAndCloseModal() {
-    const modal = document.getElementById('action-modal');
-    if(modal) modal.style.display = 'none';
-    currentModalIndex = null;
-}
-/* ================= STEP 5: MISSING UI FUNCTIONS ================= */
-
-/**
- * Nayi Playlist banane ka popup (input field) dikhane ke liye
- */
-function showNewPlaylistPrompt() {
-    const promptModal = document.getElementById('playlist-name-modal');
-    if (promptModal) {
-        promptModal.style.display = 'block';
-        // Input field par auto-focus karne ke liye
-        const input = document.getElementById('new-playlist-input');
-        if (input) input.focus();
-    }
-}
-
-/**
- * Nayi Playlist banane ka popup band karne ke liye
- */
-function closePlaylistPrompt() {
-    const promptModal = document.getElementById('playlist-name-modal');
-    if (promptModal) {
-        promptModal.style.display = 'none';
-        const input = document.getElementById('new-playlist-input');
-        if (input) input.value = ""; // Input clear kar dega
-    }
-}
-
-/**
- * Nayi playlist confirm karke sirf SELECTED gaana add karna
- */
-function confirmCreatePlaylist() {
-    const nameInput = document.getElementById('new-playlist-input');
-    const name = nameInput.value.trim();
-
-    if (name) {
-        if (!userLibrary.playlists[name]) {
-            
-            // POSSIBLITY FIX: Pehle poora array ja raha tha, ab sirf selected index jayega
-            // Hum ek naya array [ ] banayenge jisme sirf currentModalIndex hoga
-            userLibrary.playlists[name] = [currentModalIndex];
-            
-            saveLibraryToDisk(); // Permanent save
-            
-            // UI Cleanup
-            nameInput.value = "";
-            document.getElementById('playlist-name-modal').style.display = 'none';
-            document.getElementById('action-modal').style.display = 'none';
-            
-            alert(`Playlist "${name}" created with 1 song.`);
-            
-            if(document.getElementById('library-screen').style.display === 'block') {
-                renderLibraryContent('playlists');
-            }
-        } else {
-            alert("This playlist name already exists!");
-        }
-    }
-}
-
-/**
- * 7 Poori Playlist delete karne ka function
- */
 function deletePlaylist(playlistName) {
-    // 1. User se confirmation lo
     if (confirm(`Are you sure you want to delete "${playlistName}"?`)) {
-        
-        // 2. userLibrary se woh playlist mita do
         delete userLibrary.playlists[playlistName];
-        
-        // 3. Agar uski koi custom thumbnail (photo) hai toh use bhi mita do
         if (userLibrary.playlistThumbs && userLibrary.playlistThumbs[playlistName]) {
             delete userLibrary.playlistThumbs[playlistName];
         }
-
-        // 4. Storage mein save karo
         saveLibraryToDisk();
-
-        // 5. UI refresh karo aur wapas Library view par jao
+        if(typeof renderHomeScreen === "function") renderHomeScreen();
         backToLibraryPlaylists();
-        alert("Playlist deleted successfully.");
     }
 }
+
 
 
 /* ================= NAVIGATION & SEARCH ================= */
