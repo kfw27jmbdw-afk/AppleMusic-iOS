@@ -3,7 +3,7 @@
   "appName": "Apple Music",
   "webDir": "www",
   "ios": {
-    "contentInset": "automatic",
-    "backgroundColor": "#000000"
+    "contentInset": "never",
+    "backgroundColor": "#121212"
   }
 }
