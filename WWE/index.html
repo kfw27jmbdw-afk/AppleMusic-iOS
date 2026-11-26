@@ -191,8 +191,8 @@
     <audio id="main-audio" preload="metadata"></audio>
 </div>
 
-<div id="action-modal" class="overlay" style="display:none;">
-    <div class="modal-content">
+<div id="action-modal" class="overlay" onclick="if(event.target === this) saveAndCloseModal();" style="display:none; z-index: 90000 !important; pointer-events: auto !important;">
+    <div class="modal-content" onclick="event.stopPropagation();" style="position: relative; z-index: 90001 !important; pointer-events: auto !important;">
         <div class="modal-header">
             <h3 id="modal-song-name">Song Name</h3>
             <p id="modal-song-artist">Artist Name</p>
@@ -221,8 +221,8 @@
     </div>
 </div>
 
-<div id="playlist-name-modal" class="overlay" style="display:none; z-index: 20005;">
-    <div class="modal-content small">
+<div id="playlist-name-modal" class="overlay" onclick="if(event.target === this) closePlaylistPrompt();" style="display:none; z-index: 95000 !important; pointer-events: auto !important;">
+    <div class="modal-content small" onclick="event.stopPropagation();" style="position: relative; z-index: 95001 !important; pointer-events: auto !important;">
         <h3>New Playlist</h3>
         <input type="text" id="new-playlist-input" placeholder="Playlist Name...">
         <div class="modal-footer">
@@ -231,6 +231,7 @@
         </div>
     </div>
 </div>
+
 
 <div id="song-options-menu" class="song-context-menu">
     <div class="menu-item" onclick="openPlaylistSheet()">
