@@ -242,13 +242,15 @@ async function startCloudSync() {
             if (!playlist.some(p => p.url === cloudEntry.url)) {
                 playlist.push(cloudEntry);
             }
-        }
+                }
 
+        savePlaylistToDisk();
         console.log("✅ Cloud Sync Complete! All songs are now in your Playlist.");
         
         // 5. UI Refresh: Taaki "All Songs" list mein gaane turant dikh jayein
         renderPlaylist(); 
         if(typeof renderHomeScreen === "function") renderHomeScreen();
+
 
     } catch (e) {
         console.error("❌ Cloud Injection Error:", e);
