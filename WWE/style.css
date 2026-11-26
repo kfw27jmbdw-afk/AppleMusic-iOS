@@ -1819,3 +1819,24 @@ body.search-active #global-search-results {
         font-size: 18px !important;
     }
 }
+
+/* ================= EDGE-TO-EDGE NOTCH & SAFE AREA FIX ================= */
+html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    min-height: 100vh !important;
+    background-color: #121212;
+}
+
+#playlist-screen,
+#player-screen {
+    top: 0 !important;
+    min-height: 100vh !important;
+}
+
+#playlist-screen .header,
+#player-screen .top-bar {
+    padding-top: calc(env(safe-area-inset-top) + 10px) !important;
+}
+
