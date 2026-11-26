@@ -1962,13 +1962,13 @@ function renderLibraryContent(view = 'all') {
     else { renderSongList(userLibrary.songs, container, "Library empty."); }
 }
 
-function renderSongList(indices, container, msg) {
-    if (!indices || indices.length === 0) { container.innerHTML = `<p style="text-align:center; padding:20px;">${msg}</p>`; return; }
-    indices.forEach(idx => {
+function renderSongList(entries, container, msg) {
+    const validIndices = (entries || []).map(e => resolveSongIndex(e)).filter(idx => idx !== -1 && playlist[idx]);
+    if (validIndices.length === 0) { container.innerHTML = `<p style="text-align:center; padding:20px;">${msg}</p>`; return; }
+    validIndices.forEach(idx => {
         const song = playlist[idx];
         const div = document.createElement('div');
         div.className = "song-item";
-        // 🟢 Yahan bhi status-container add kar diya
         div.innerHTML = `
             <div class="song-info-container" onclick="loadSong(${idx});">
                 <img src="${song.img || defaultImg}">
@@ -1977,8 +1977,9 @@ function renderSongList(indices, container, msg) {
             <div class="status-container" style="display: flex; align-items: center; padding-right: 15px;"></div>`;
         container.appendChild(div);
     });
-    updatePlayingUI(); // 🟢 Sync status
+    updatePlayingUI();
 }
+
 
 
 
