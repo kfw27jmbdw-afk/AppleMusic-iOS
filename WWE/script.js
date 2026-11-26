@@ -2058,8 +2058,9 @@ function createHomeRow(title, indices, showSeeAll) {
             </div>
             <div class="scroll-row" style="display:flex; overflow-x:auto; gap:15px; scrollbar-width:none; padding-bottom:5px;">`;
 
-    indices.forEach(idx => {
-        const s = playlist[idx];
+        indices.forEach(entry => {
+        const idx = resolveSongIndex(entry);
+        const s = idx !== -1 ? playlist[idx] : null;
         if(s) {
             row += `
                 <div class="home-card" onclick="loadSong(${idx});" style="min-width:145px; max-width:145px; cursor:pointer;">
@@ -2073,6 +2074,7 @@ function createHomeRow(title, indices, showSeeAll) {
     row += `</div></div>`;
     return row;
 }
+
 
 // Full History View (See All)
 function showFullRecentList() {
@@ -2166,135 +2168,7 @@ window.addEventListener('offline', () => renderPlaylist());
 
 function formatTime(s) { let m = Math.floor(s / 60), sc = Math.floor(s % 60); return `${m}:${sc < 10 ? '0' + sc : sc}`; }
 
-/* ================= FEATURE: ADD TO PLAYLIST LOGIC ================= */
 
-/**
- * Modal ko band karne aur UI saaf karne ka function
- */
-function saveAndCloseModal() {
-    const modal = document.getElementById('action-modal');
-    if(modal) modal.style.display = 'none';
-    currentModalIndex = null;
-}
-
-/**
- * Playlist modal ke andar playlists render karna
- */
-function renderModalPlaylists() {
-    const container = document.getElementById('modal-playlists-list');
-    if(!container) return;
-    container.innerHTML = "";
-
-    Object.keys(userLibrary.playlists).forEach(name => {
-        // Check karo ki gaana pehle se is playlist mein hai ya nahi
-        const isAdded = userLibrary.playlists[name].includes(currentModalIndex);
-        const safeId = name.replace(/\s/g, '');
-        
-        const div = document.createElement('div');
-        div.className = "modal-option";
-        div.onclick = () => toggleTick('playlist', name);
-        div.innerHTML = `
-            <i class="fas fa-list-ul"></i>
-            <span>${name}</span>
-            <i class="fas fa-check-circle tick-icon ${isAdded ? 'active' : ''}" id="tick-pl-${safeId}"></i>
-        `;
-        container.appendChild(div);
-    });
-}
-
-/**
- * Kisi playlist ya library mein gaana add/remove (tick) karna
- */
-function toggleTick(type, playlistName = null) {
-    const tickId = playlistName ? `tick-pl-${playlistName.replace(/\s/g, '')}` : `tick-${type}`;
-    const tickIcon = document.getElementById(tickId);
-    
-    if (!tickIcon) return;
-
-    const isActive = tickIcon.classList.contains('active');
-    
-    if (playlistName) {
-        // Playlist logic: Add or Remove
-        if (!isActive) {
-            userLibrary.playlists[playlistName].push(currentModalIndex);
-            tickIcon.classList.add('active');
-        } else {
-            userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(idx => idx !== currentModalIndex);
-            tickIcon.classList.remove('active');
-        }
-    } else {
-        // Library or Favourite logic
-        const targetArray = type === 'library' ? userLibrary.songs : userLibrary.favourites;
-        if (!isActive) {
-            targetArray.push(currentModalIndex);
-            tickIcon.classList.add('active');
-        } else {
-            const index = targetArray.indexOf(currentModalIndex);
-            if (index > -1) targetArray.splice(index, 1);
-            tickIcon.classList.remove('active');
-        }
-    }
-    // Storage mein save karo taaki refresh par na udde
-    saveLibraryToDisk();
-}
-
-/**
- * Gaane ka menu khulne par ya Player se '+' dabane par modal dikhao
- */
-function handleMenuAddPlaylist() {
-    // 1. Agar gaane ki list wala menu khula hai toh use band karo
-    const songMenu = document.getElementById('song-options-menu');
-    if(songMenu) songMenu.style.display = 'none'; 
-
-    // 2. Index set karo
-    currentModalIndex = selectedMenuIndex; 
-    
-    if (currentModalIndex === null || currentModalIndex === undefined) return;
-
-    const song = playlist[currentModalIndex];
-
-    // 3. Modal UI update
-    document.getElementById('modal-song-name').innerText = song.name;
-    document.getElementById('modal-song-artist').innerText = song.artist;
-
-    // 4. Tick status update
-    updateTickUI('library', userLibrary.songs.includes(currentModalIndex));
-    updateTickUI('favourite', userLibrary.favourites.includes(currentModalIndex));
-
-    renderModalPlaylists();
-    document.getElementById('action-modal').style.display = 'block';
-}
-
-function updateTickUI(type, status) {
-    const tick = document.getElementById(`tick-${type}`);
-    if(tick) status ? tick.classList.add('active') : tick.classList.remove('active');
-}
-
-function handleMenuAddPlaylistFromPlayer() {
-    selectedMenuIndex = currentIndex; 
-    handleMenuAddPlaylist(); 
-}
-
-/**
- * Nayi Playlist banane ka logic
- */
-function confirmCreatePlaylist() {
-    const nameInput = document.getElementById('new-playlist-input');
-    const name = nameInput.value.trim();
-
-    if (name) {
-        if (!userLibrary.playlists[name]) {
-            userLibrary.playlists[name] = [currentModalIndex];
-            saveLibraryToDisk();
-            nameInput.value = "";
-            document.getElementById('playlist-name-modal').style.display = 'none';
-            saveAndCloseModal();
-            alert(`Created & Added to "${name}"`);
-        } else {
-            alert("Playlist already exists!");
-        }
-    }
-}
 /**
  * Equalizer bars generate karne ka function
  */
