@@ -1015,6 +1015,10 @@ function updatePlayIcons(isPlaying) {
 function nextSong() { currentIndex = (currentIndex + 1) % playlist.length; loadSong(currentIndex); audio.play(); updatePlayIcons(true); }
 function prevSong() { currentIndex = (currentIndex - 1 + playlist.length) % playlist.length; loadSong(currentIndex); audio.play(); updatePlayIcons(true); }
 
+let isMultiSelectMode = false;
+let selectedSongIndices = new Set();
+let currentModalIndices = [];
+
 async function renderPlaylist() {
     const container = document.getElementById('song-list-container');
     if(!container) return;
@@ -1023,56 +1027,83 @@ async function renderPlaylist() {
     const isOffline = !navigator.onLine;
     container.innerHTML = ""; 
 
-    // Loop through the playlist
     for (let index = 0; index < playlist.length; index++) {
         const song = playlist[index];
-        
-        // 🟢 SAFETY CHECK: Agar array mein koi empty entry ya galti se comma reh gaya ho
         if (!song) continue;
 
         const div = document.createElement('div');
         div.className = "song-item";
+        div.id = `browse-row-${index}`;
         
         const isCurrent = (index === currentIndex);
-        const isPlaying = isCurrent && audio && !audio.paused;
         const isPaused = isCurrent && audio && audio.paused;
+        const isSelected = selectedSongIndices.has(index);
 
-        // Offline mode feature
         const isCached = await cache.match(song.url);
         if (isOffline && !isCached) { 
             div.style.opacity = "0.3"; 
             div.style.pointerEvents = "none"; 
         }
 
-        // 🟢 FIX: song.img check taaki undefined crash na ho
+        if (isMultiSelectMode && isSelected) {
+            div.style.background = "rgba(255, 59, 48, 0.14)";
+            div.style.borderRadius = "12px";
+        }
+
         const songImg = song.img || defaultImg;
 
         div.innerHTML = `
-            <div class="song-info-container" onclick="loadSong(${index});">
-                <img src="${songImg}">
-                <div>
-                    <h4 style="color: ${isCurrent ? '#1DB954' : 'white'}">${song.name || 'Unknown Title'}</h4>
-                    <p>${song.artist || 'Unknown Artist'}</p>
+            <div class="song-info-container" style="display: flex; align-items: center; flex: 1; min-width: 0; cursor: pointer;">
+                ${isMultiSelectMode ? `
+                    <div style="margin-right: 12px; flex-shrink: 0; font-size: 20px; color: ${isSelected ? '#ff3b30' : 'rgba(255,255,255,0.35)'};">
+                        <i class="${isSelected ? 'fas fa-check-circle' : 'far fa-circle'}"></i>
+                    </div>
+                ` : ''}
+                <img src="${songImg}" style="flex-shrink: 0;">
+                <div style="min-width: 0; flex: 1;">
+                    <h4 style="color: ${isCurrent ? '#1DB954' : 'white'}; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${song.name || 'Unknown Title'}</h4>
+                    <p style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${song.artist || 'Unknown Artist'}</p>
                 </div>
             </div>
-            <div style="display: flex; align-items: center; gap: 12px;">
-                ${isCurrent ? `
-                    <div class="playing-animation ${isPaused ? 'paused' : ''}">
-                        <span></span><span></span><span></span>
-                    </div>` : ''}
-                <div class="song-menu-btn" onclick="event.stopPropagation(); openSongMenu(event, ${index})">
-                    <i class="fas fa-ellipsis-v"></i>
+            ${!isMultiSelectMode ? `
+                <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+                    ${isCurrent ? `
+                        <div class="playing-animation ${isPaused ? 'paused' : ''}">
+                            <span></span><span></span><span></span>
+                        </div>` : ''}
+                    <div class="song-menu-btn" onclick="event.stopPropagation(); openSongMenu(event, ${index})">
+                        <i class="fas fa-ellipsis-v"></i>
+                    </div>
                 </div>
-            </div>`;
+            ` : ''}`;
+
+        const infoBox = div.querySelector('.song-info-container');
+        let pressTimer = null;
+
+        infoBox.addEventListener('touchstart', () => {
+            pressTimer = setTimeout(() => {
+                if (!isMultiSelectMode) enterMultiSelectMode(index);
+            }, 520);
+        }, { passive: true });
+        infoBox.addEventListener('touchend', () => clearTimeout(pressTimer));
+        infoBox.addEventListener('touchmove', () => clearTimeout(pressTimer));
+
+        infoBox.onclick = () => {
+            if (isMultiSelectMode) {
+                toggleSongSelection(index);
+            } else {
+                loadSong(index);
+            }
+        };
 
         container.appendChild(div);
     }
     
-    // Status sync update
     if (typeof updatePlayingUI === "function") {
         updatePlayingUI();
     }
 }
+
 
 
 
@@ -1145,24 +1176,37 @@ function hasSongInList(list, songIndex) {
     return list.includes(key) || list.includes(songIndex);
 }
 
-function handleMenuAddPlaylist() {
+function handleMenuAddPlaylist(bulkIndices = null) {
     const songMenu = document.getElementById('song-options-menu');
     if(songMenu) songMenu.style.display = 'none'; 
 
-    currentModalIndex = selectedMenuIndex; 
-    if (currentModalIndex === null || currentModalIndex === undefined) return;
+    if (Array.isArray(bulkIndices) && bulkIndices.length > 0) {
+        currentModalIndices = [...bulkIndices];
+        currentModalIndex = bulkIndices[0];
+    } else {
+        currentModalIndex = selectedMenuIndex;
+        if (currentModalIndex === null || currentModalIndex === undefined) return;
+        currentModalIndices = [currentModalIndex];
+    }
 
-    const song = playlist[currentModalIndex];
-    if (!song) return;
+    const firstSong = playlist[currentModalIndex];
+    if (!firstSong) return;
 
-    document.getElementById('modal-song-name').innerText = song.name;
-    document.getElementById('modal-song-artist').innerText = song.artist;
+    if (currentModalIndices.length > 1) {
+        document.getElementById('modal-song-name').innerText = `${currentModalIndices.length} Songs Selected`;
+        document.getElementById('modal-song-artist').innerText = "Add all selected tracks";
+    } else {
+        document.getElementById('modal-song-name').innerText = firstSong.name;
+        document.getElementById('modal-song-artist').innerText = firstSong.artist;
+    }
 
-    updateTickUI('library', hasSongInList(userLibrary.songs, currentModalIndex));
-    updateTickUI('favourite', hasSongInList(userLibrary.favourites, currentModalIndex));
+    updateTickUI('library', currentModalIndices.every(i => hasSongInList(userLibrary.songs, i)));
+    updateTickUI('favourite', currentModalIndices.every(i => hasSongInList(userLibrary.favourites, i)));
 
     renderModalPlaylists();
-    document.getElementById('action-modal').style.display = 'flex';
+    const modal = document.getElementById('action-modal');
+    modal.style.zIndex = '100005';
+    modal.style.display = 'flex';
 }
 
 function renderModalPlaylists() {
@@ -1171,7 +1215,7 @@ function renderModalPlaylists() {
     container.innerHTML = "";
 
     Object.keys(userLibrary.playlists).forEach(name => {
-        const isAdded = hasSongInList(userLibrary.playlists[name], currentModalIndex);
+        const isAdded = currentModalIndices.length > 0 && currentModalIndices.every(i => hasSongInList(userLibrary.playlists[name], i));
         const safeId = name.replace(/\s/g, '');
         
         container.innerHTML += `
@@ -1188,33 +1232,36 @@ function renderModalPlaylists() {
 function toggleTick(type, playlistName = null) {
     const tickId = playlistName ? `tick-pl-${playlistName.replace(/\s/g, '')}` : `tick-${type}`;
     const tickIcon = document.getElementById(tickId);
-    if (!tickIcon) return;
-
-    const song = playlist[currentModalIndex];
-    const songKey = getSongKey(song);
-    if (!songKey) return;
+    if (!tickIcon || currentModalIndices.length === 0) return;
 
     const isActive = tickIcon.classList.contains('active');
+    const keysToProcess = currentModalIndices.map(i => ({ idx: i, key: getSongKey(playlist[i]) })).filter(x => x.key);
     
     if (playlistName) {
         if (!isActive) {
-            if (!hasSongInList(userLibrary.playlists[playlistName], currentModalIndex)) {
-                userLibrary.playlists[playlistName].push(songKey);
-            }
+            keysToProcess.forEach(({ idx, key }) => {
+                if (!hasSongInList(userLibrary.playlists[playlistName], idx)) {
+                    userLibrary.playlists[playlistName].push(key);
+                }
+            });
             tickIcon.classList.add('active');
         } else {
-            userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(item => item !== songKey && item !== currentModalIndex);
+            const keySet = new Set(keysToProcess.map(x => x.key));
+            const idxSet = new Set(keysToProcess.map(x => x.idx));
+            userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(item => !keySet.has(item) && !idxSet.has(item));
             tickIcon.classList.remove('active');
         }
     } else {
         const targetArray = type === 'library' ? userLibrary.songs : userLibrary.favourites;
         if (!isActive) {
-            if (!hasSongInList(targetArray, currentModalIndex)) {
-                targetArray.push(songKey);
-            }
+            keysToProcess.forEach(({ idx, key }) => {
+                if (!hasSongInList(targetArray, idx)) targetArray.push(key);
+            });
             tickIcon.classList.add('active');
         } else {
-            const filtered = targetArray.filter(item => item !== songKey && item !== currentModalIndex);
+            const keySet = new Set(keysToProcess.map(x => x.key));
+            const idxSet = new Set(keysToProcess.map(x => x.idx));
+            const filtered = targetArray.filter(item => !keySet.has(item) && !idxSet.has(item));
             if (type === 'library') userLibrary.songs = filtered;
             else userLibrary.favourites = filtered;
             tickIcon.classList.remove('active');
@@ -1233,6 +1280,7 @@ function updateTickUI(type, status) {
     if(tick) status ? tick.classList.add('active') : tick.classList.remove('active');
 }
 
+
 /* ================= STEP 3: PLAYLIST DETAIL & OPEN LOGIC ================= */
 
 function openPlaylistDetail(playlistName) {
@@ -1240,11 +1288,13 @@ function openPlaylistDetail(playlistName) {
     const subNavs = document.querySelectorAll('.library-sub-nav');
     const libScreen = document.getElementById('library-screen');
     
-    const libHeader = document.querySelector('#library-screen .playlist-header');
+    const libHeader = document.querySelector('#library-screen .playlist-header') || document.querySelector('.library-header');
     if(libHeader) libHeader.style.display = 'none'; 
     
     subNavs.forEach(nav => nav.style.setProperty('display', 'none', 'important'));
     container.classList.remove('grid-view');
+    container.style.removeProperty('align-content');
+    container.style.removeProperty('grid-auto-rows');
     container.style.background = 'transparent';
 
     if (libScreen) {
@@ -1266,9 +1316,10 @@ function openPlaylistDetail(playlistName) {
 
     container.innerHTML = `
         <div class="playlist-detail-header" id="playlist-header-bg" 
-             style="display: flex; flex-direction: column; align-items: center; padding: calc(env(safe-area-inset-top, 44px) + 8px) 20px 20px 20px; background: transparent !important; position: relative;">
+             style="display: flex; flex-direction: column; align-items: center; padding: calc(max(env(safe-area-inset-top, 0px), 54px) + 6px) 20px 20px 20px; background: transparent !important; position: relative; z-index: 50;">
             
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; position: relative;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 18px; position: relative; z-index: 60;">
+
                 <div onclick="backToLibraryPlaylists()" style="background: rgba(255,255,255,0.14); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor:pointer;">
                     <i class="fas fa-chevron-left" style="font-size: 15px; color: white;"></i>
                 </div>
@@ -1482,17 +1533,18 @@ function updatePlayingUI() {
 function backToLibraryPlaylists() {
     closeAllPlaylistPopups();
     const libScreen = document.getElementById('library-screen');
-    if (libScreen) libScreen.style.removeProperty('background');
+    if (libScreen) libScreen.style.setProperty('background', '#000000', 'important');
 
-    const libHeader = document.querySelector('#library-screen .playlist-header');
-    if(libHeader) libHeader.style.display = 'flex';
+    const libHeader = document.querySelector('#library-screen .playlist-header') || document.querySelector('.library-header');
+    if(libHeader) libHeader.style.removeProperty('display');
 
     const subNavs = document.querySelectorAll('.library-sub-nav');
     subNavs.forEach(nav => nav.style.setProperty('display', 'flex', 'important'));
-    document.documentElement.style.setProperty('--pl-pl-bg-color', '#121212');
-    document.documentElement.style.setProperty('--pl-bg-color', '#121212');
+    document.documentElement.style.setProperty('--pl-pl-bg-color', '#000000');
+    document.documentElement.style.setProperty('--pl-bg-color', '#000000');
     switchLibraryView('playlists');
 }
+
 
 function confirmRemoveFromPlaylist(e, playlistName, songIdx) {
     if (e) e.stopPropagation();
@@ -1531,14 +1583,41 @@ function closePlaylistPrompt() {
     }
 }
 
+function saveAndCloseModal() {
+    const modal = document.getElementById('action-modal');
+    if(modal) modal.style.display = 'none';
+    currentModalIndex = null;
+    currentModalIndices = [];
+    if (isMultiSelectMode) exitMultiSelectMode();
+}
+
+function showNewPlaylistPrompt() {
+    const promptModal = document.getElementById('playlist-name-modal');
+    if (promptModal) {
+        promptModal.style.zIndex = '100006';
+        promptModal.style.display = 'flex';
+        const input = document.getElementById('new-playlist-input');
+        if (input) input.focus();
+    }
+}
+
+function closePlaylistPrompt() {
+    const promptModal = document.getElementById('playlist-name-modal');
+    if (promptModal) {
+        promptModal.style.display = 'none';
+        const input = document.getElementById('new-playlist-input');
+        if (input) input.value = "";
+    }
+}
+
 function confirmCreatePlaylist() {
     const nameInput = document.getElementById('new-playlist-input');
     const name = nameInput.value.trim();
 
     if (name) {
         if (!userLibrary.playlists[name]) {
-            const songKey = getSongKey(playlist[currentModalIndex]);
-            userLibrary.playlists[name] = songKey ? [songKey] : [];
+            const keys = currentModalIndices.map(i => getSongKey(playlist[i])).filter(Boolean);
+            userLibrary.playlists[name] = [...new Set(keys)];
             
             saveLibraryToDisk();
             
@@ -1546,7 +1625,8 @@ function confirmCreatePlaylist() {
             document.getElementById('playlist-name-modal').style.display = 'none';
             document.getElementById('action-modal').style.display = 'none';
             
-            showTempMessage(` Playlist "${name}" created!`);
+            showTempMessage(` "${name}" created (${keys.length} songs)`);
+            if (isMultiSelectMode) exitMultiSelectMode();
             if(typeof renderHomeScreen === "function") renderHomeScreen();
             if(document.getElementById('library-screen').style.display === 'block') {
                 renderLibraryContent('playlists');
@@ -1558,6 +1638,7 @@ function confirmCreatePlaylist() {
         alert("Please enter a playlist name.");
     }
 }
+
 
 function deletePlaylist(playlistName) {
     if (confirm(`Are you sure you want to delete "${playlistName}"?`)) {
@@ -1586,16 +1667,18 @@ function switchTab(tabName) {
         document.getElementById('library-screen').style.display = 'block';
         document.getElementById('tab-library').classList.add('active');
         
-        // --- FIX STARTS HERE ---
-        // 1. Library Title aur Sub-Nav (Download, Playlist buttons) wapas dikhao
-        const libHeader = document.querySelector('.library-header');
-        if(libHeader) libHeader.style.display = 'block'; 
+                closeAllPlaylistPopups();
+        const libScreen = document.getElementById('library-screen');
+        if (libScreen) libScreen.style.setProperty('background', '#000000', 'important');
+
+        const libHeader = document.querySelector('#library-screen .playlist-header') || document.querySelector('.library-header');
+        if(libHeader) libHeader.style.removeProperty('display'); 
         
         const subNavs = document.querySelectorAll('.library-sub-nav');
         subNavs.forEach(nav => nav.style.setProperty('display', 'flex', 'important'));
 
-        // 2. Color reset karo taaki black patti na aaye
-        document.documentElement.style.setProperty('--pl-bg-color', '#121212');
+        document.documentElement.style.setProperty('--pl-bg-color', '#000000');
+
 
         // 3. Default view 'playlists' par set karo
         renderLibraryContent('playlists'); 
@@ -1765,36 +1848,70 @@ function renderSearchRow(title, artist, img, data, type, target) {
     div.className = 'song-item'; 
     div.style.cssText = "display: flex; align-items: center; justify-content: space-between; padding: 8px 16px; width: 100%; box-sizing: border-box;";
     
-    let action, badge, indexForMenu;
+    let action, badge;
     if (type === 'cloudinary') {
         action = `playSelectedCloudSong(${JSON.stringify(data).replace(/"/g, '&quot;')})`;
         badge = '☁️ Cloud';
-        indexForMenu = 0; 
     } else if (type === 'drive') {
         action = `fetchMusicMeta('${data}', '${title.replace(/'/g, "\\'")}')`;
         badge = '📁 Drive';
-        indexForMenu = data;
     } else {
         badge = '💿 Library';
         action = `loadSong(${data}); maximizePlayer();`;
-        indexForMenu = data;
     }
 
     div.innerHTML = `
-        <div class="song-info-container" onclick="${action}" style="display: flex !important; align-items: center !important; flex: 1 !important; padding: 0px 10px !important; cursor: pointer;">
+        <div class="song-info-container" onclick="${action}" style="display: flex !important; align-items: center !important; flex: 1 !important; padding: 0px 10px !important; cursor: pointer; min-width: 0;">
             <img src="${img}" style="width: 48px !important; height: 48px !important; border-radius: 6px !important; object-fit: cover !important; flex-shrink: 0 !important;">
-            <div style="margin-left: 14px !important; display: flex !important; flex-direction: column !important; justify-content: center !important; overflow: hidden !important; flex: 1 !important;">
+            <div style="margin-left: 14px !important; display: flex !important; flex-direction: column !important; justify-content: center !important; overflow: hidden !important; flex: 1 !important; min-width: 0;">
                 <h4 style="font-size: 15px !important; margin: 0 !important; color: white !important; white-space: nowrap !important; text-overflow: ellipsis !important; overflow: hidden !important; font-weight: 500 !important; line-height: 1.2 !important;">${title}</h4>
                 <p style="font-size: 12px !important; margin: 3px 0 0 !important; color: #8e8e93 !important; white-space: nowrap !important; text-overflow: ellipsis !important; overflow: hidden !important;">${badge} • ${artist}</p>
             </div>
         </div>
 
-        <div class="song-menu-btn" onclick="event.stopPropagation(); openSongMenu(event, ${indexForMenu})" style="padding: 10px 16px !important; display: flex !important; align-items: center !important; cursor: pointer;">
+        <div class="song-menu-btn" style="padding: 10px 16px !important; display: flex !important; align-items: center !important; cursor: pointer; flex-shrink: 0;">
             <i class="fas fa-ellipsis-v" style="color: #8e8e93 !important; font-size: 14px !important;"></i>
         </div>
     `;
+
+    const menuBtn = div.querySelector('.song-menu-btn');
+    menuBtn.onclick = (e) => {
+        e.stopPropagation();
+        let realIndex = -1;
+
+        if (type === 'cloudinary') {
+            realIndex = playlist.findIndex(p => p && p.url === data.url);
+            if (realIndex === -1) {
+                playlist.push(data);
+                realIndex = playlist.length - 1;
+                savePlaylistToDisk();
+                renderPlaylist();
+            }
+        } else if (type === 'drive') {
+            realIndex = playlist.findIndex(p => p && p.driveId === data);
+            if (realIndex === -1) {
+                playlist.push({
+                    name: title,
+                    artist: artist || "Google Drive",
+                    url: "",
+                    img: img || defaultImg,
+                    isDrive: true,
+                    driveId: data
+                });
+                realIndex = playlist.length - 1;
+                savePlaylistToDisk();
+                renderPlaylist();
+            }
+        } else {
+            realIndex = data;
+        }
+
+        openSongMenu(e, realIndex);
+    };
+
     target.appendChild(div);
 }
+
 
 // 3. CLOUD PLAYBACK EXECUTION
 function playSelectedCloudSong(song) {
@@ -2086,18 +2203,32 @@ function switchLibraryView(view) {
 function renderLibraryContent(view = 'all') {
     const container = document.getElementById('library-content-area');
     if (!container) return;
-    container.innerHTML = ""; container.classList.remove('grid-view'); 
+    container.innerHTML = ""; 
+    container.classList.remove('grid-view'); 
+    container.style.removeProperty('align-content');
+    container.style.removeProperty('grid-auto-rows');
+    container.style.removeProperty('row-gap');
 
     if (view === 'playlists') {
         container.classList.add('grid-view'); 
+        container.style.setProperty('align-content', 'start', 'important');
+        container.style.setProperty('grid-auto-rows', 'max-content', 'important');
+        container.style.setProperty('row-gap', '18px', 'important');
+
         Object.keys(userLibrary.playlists).forEach(name => {
-            const thumb = userLibrary.playlistThumbs[name] || 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300';
+            const entries = userLibrary.playlists[name] || [];
+            const firstIdx = entries.map(e => resolveSongIndex(e)).find(i => i !== -1 && playlist[i]);
+            const autoThumb = (firstIdx !== undefined && playlist[firstIdx]?.img) ? playlist[firstIdx].img : defaultImg;
+            const thumb = (userLibrary.playlistThumbs && userLibrary.playlistThumbs[name]) || autoThumb;
+
             const div = document.createElement('div');
             div.className = "playlist-card";
-            div.innerHTML = `<div class="playlist-thumb-container" onclick="openPlaylistDetail('${name}')"><img src="${thumb}"></div><h4>${name}</h4>`;
+            div.style.height = "auto";
+            div.innerHTML = `<div class="playlist-thumb-container" onclick="openPlaylistDetail('${name.replace(/'/g, "\\'")}')"><img src="${thumb}"></div><h4>${name}</h4>`;
             container.appendChild(div);
         });
     } 
+ 
     else if (view === 'down') { renderDownloadedSongs(); } 
     else if (view === 'fav') { renderSongList(userLibrary.favourites, container, "No favorites."); } 
     else { renderSongList(userLibrary.songs, container, "Library empty."); }
@@ -2534,9 +2665,16 @@ function openSongMenu(e, index) {
     const x = e.clientX || (e.touches && e.touches[0].clientX);
     const y = e.clientY || (e.touches && e.touches[0].clientY);
     
-    menu.style.display = 'block';
-    menu.style.top = `${y}px`;
-    menu.style.left = `${x - 160}px`;
+        menu.style.display = 'block';
+    menu.style.zIndex = '99999';
+    menu.style.top = `${Math.min(y, window.innerHeight - 210)}px`;
+    menu.style.left = `${Math.max(16, x - 160)}px`;
+
+    const actionModal = document.getElementById('action-modal');
+    if (actionModal) actionModal.style.zIndex = '100000';
+    const plPromptModal = document.getElementById('playlist-name-modal');
+    if (plPromptModal) plPromptModal.style.zIndex = '100001';
+
 
     menu.innerHTML = `
         <div class="menu-item" onclick="handleMenuAddPlaylist()">
@@ -2548,6 +2686,9 @@ function openSongMenu(e, index) {
         <div class="menu-item" onclick="handleDownload()">
             <i class="fas fa-download"></i> Download Offline
         </div>
+              <div class="menu-item" onclick="document.getElementById('song-options-menu').style.display='none'; enterMultiSelectMode(${index});">
+            <i class="fas fa-check-circle"></i> Select Songs
+        </div>
         <div class="menu-item" onclick="handleDeleteSong()" style="color: #ff453a; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 5px; padding-top: 10px;">
             <i class="fas fa-trash"></i> Remove from Library
         </div>
@@ -2555,6 +2696,183 @@ function openSongMenu(e, index) {
 
     const song = playlist[index];
     if (song) updateMediaSession(song);
+}
+
+/* =================  MULTI-SELECT ENGINE ================= */
+function enterMultiSelectMode(initialIndex = null) {
+    isMultiSelectMode = true;
+    selectedSongIndices.clear();
+    if (initialIndex !== null && initialIndex !== undefined) {
+        selectedSongIndices.add(initialIndex);
+    }
+
+    playlist.forEach((song, i) => {
+        if (!song) return;
+        const row = document.getElementById(`browse-row-${i}`);
+        if (!row) return;
+
+        const infoBox = row.querySelector('.song-info-container');
+        if (infoBox && !infoBox.querySelector('.multi-select-check')) {
+            const checkDiv = document.createElement('div');
+            checkDiv.className = 'multi-select-check';
+            checkDiv.style.cssText = 'margin-right: 12px; flex-shrink: 0; font-size: 20px; color: rgba(255,255,255,0.35);';
+            checkDiv.innerHTML = '<i class="far fa-circle"></i>';
+            infoBox.prepend(checkDiv);
+        }
+
+        const rightControls = row.children[1];
+        if (rightControls) rightControls.style.display = 'none';
+
+        applyRowSelectionUI(i);
+    });
+
+    updateMultiSelectBar();
+}
+
+function exitMultiSelectMode() {
+    isMultiSelectMode = false;
+    selectedSongIndices.clear();
+
+    const bar = document.getElementById('multi-select-bar');
+    if (bar) bar.remove();
+
+    playlist.forEach((song, i) => {
+        if (!song) return;
+        const row = document.getElementById(`browse-row-${i}`);
+        if (!row) return;
+
+        row.style.background = '';
+        row.style.borderRadius = '';
+
+        const checkDiv = row.querySelector('.multi-select-check');
+        if (checkDiv) checkDiv.remove();
+
+        const rightControls = row.children[1];
+        if (rightControls) rightControls.style.display = 'flex';
+    });
+}
+
+
+function applyRowSelectionUI(index) {
+    const row = document.getElementById(`browse-row-${index}`);
+    if (!row) return;
+
+    const isSelected = selectedSongIndices.has(index);
+    row.style.background = isSelected ? "rgba(255, 59, 48, 0.14)" : "";
+    row.style.borderRadius = isSelected ? "12px" : "";
+
+    const iconWrap = row.querySelector('.song-info-container > div:first-child');
+    const icon = iconWrap ? iconWrap.querySelector('i') : null;
+    if (iconWrap && icon) {
+        iconWrap.style.color = isSelected ? '#ff3b30' : 'rgba(255,255,255,0.35)';
+        icon.className = isSelected ? 'fas fa-check-circle' : 'far fa-circle';
+    }
+}
+
+function toggleSongSelection(index) {
+    if (selectedSongIndices.has(index)) {
+        selectedSongIndices.delete(index);
+    } else {
+        selectedSongIndices.add(index);
+    }
+    applyRowSelectionUI(index);
+    updateMultiSelectBar();
+}
+
+function toggleSelectAllSongs() {
+    const selectAll = selectedSongIndices.size !== playlist.length;
+    selectedSongIndices.clear();
+    playlist.forEach((s, i) => {
+        if (!s) return;
+        if (selectAll) selectedSongIndices.add(i);
+        applyRowSelectionUI(i);
+    });
+    updateMultiSelectBar();
+}
+
+
+function updateMultiSelectBar() {
+    let bar = document.getElementById('multi-select-bar');
+    if (!isMultiSelectMode) {
+        if (bar) bar.remove();
+        return;
+    }
+
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'multi-select-bar';
+        bar.style.cssText = `
+            position: fixed;
+            bottom: 88px;
+            left: 14px;
+            right: 14px;
+            padding: 12px 14px;
+            background: linear-gradient(145deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 100%);
+            backdrop-filter: blur(22px) saturate(180%);
+            -webkit-backdrop-filter: blur(22px) saturate(180%);
+            border: 1px solid rgba(255,255,255,0.22);
+            border-radius: 22px;
+            box-shadow: 0 18px 40px rgba(0,0,0,0.75);
+            z-index: 99998;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        `;
+        document.body.appendChild(bar);
+    }
+
+    const count = selectedSongIndices.size;
+    const allSelected = count === playlist.length && count > 0;
+
+    bar.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <button onclick="exitMultiSelectMode()" style="background: rgba(255,255,255,0.12); border: none; color: white; padding: 8px 12px; border-radius: 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;">Cancel</button>
+            <button onclick="toggleSelectAllSongs()" style="background: rgba(255,255,255,0.12); border: none; color: #0a84ff; padding: 8px 11px; border-radius: 14px; font-size: 12.5px; font-weight: 600; cursor: pointer;">${allSelected ? 'None' : 'All'} (${count})</button>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px;">
+            <button onclick="bulkAddToPlaylist()" ${count === 0 ? 'disabled' : ''} style="background: #ffffff; border: none; color: #000; padding: 8px 13px; border-radius: 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; opacity: ${count === 0 ? '0.4' : '1'};">
+                + Playlist
+            </button>
+            <button onclick="bulkDeleteFromLibrary()" ${count === 0 ? 'disabled' : ''} style="background: rgba(255,59,48,0.22); border: 0.5px solid rgba(255,59,48,0.45); color: #ff453a; padding: 8px 12px; border-radius: 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; opacity: ${count === 0 ? '0.4' : '1'};">
+                <i class="fas fa-trash-alt"></i>
+            </button>
+        </div>
+    `;
+}
+
+function bulkAddToPlaylist() {
+    if (selectedSongIndices.size === 0) return;
+    handleMenuAddPlaylist([...selectedSongIndices]);
+}
+
+async function bulkDeleteFromLibrary() {
+    const indices = [...selectedSongIndices].sort((a, b) => b - a);
+    if (indices.length === 0) return;
+
+    if (!confirm(`Remove ${indices.length} selected songs from library?`)) return;
+
+    let savedDrive = JSON.parse(localStorage.getItem('my_drive_songs')) || [];
+
+    indices.forEach(idx => {
+        const song = playlist[idx];
+        if (!song) return;
+
+        if (song.isLocal && song.localId && typeof musicDB !== 'undefined') {
+            const tx = musicDB.transaction(["localSongs"], "readwrite");
+            tx.objectStore("localSongs").delete(song.localId);
+        }
+        if (song.isDrive && song.driveId) {
+            savedDrive = savedDrive.filter(s => s.id !== song.driveId);
+        }
+        playlist.splice(idx, 1);
+    });
+
+    localStorage.setItem('my_drive_songs', JSON.stringify(savedDrive));
+    savePlaylistToDisk();
+    showTempMessage(` Removed ${indices.length} songs`);
+    exitMultiSelectMode();
+    if (typeof renderHomeScreen === "function") renderHomeScreen();
 }
 
 // 2. DELETE ENGINE
