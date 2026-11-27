@@ -3153,3 +3153,292 @@ function renderCloudItem(song) {
     list.appendChild(li);
 }
 /* ============================================================ */
+
+
+/* =================  PLAYER MODE POPUP (STRAIGHT / PLAYLIST) ================= */
+let playerQueueMode = localStorage.getItem('player_queue_mode') || 'straight';
+let activeLockedPlaylist = localStorage.getItem('active_locked_playlist') || null;
+let playlistPlayedTracker = new Set();
+
+function resetPlaylistCycle(keepCurrent = true) {
+    playlistPlayedTracker.clear();
+    if (keepCurrent && typeof currentIndex === 'number') {
+        playlistPlayedTracker.add(currentIndex);
+    }
+}
+
+// Playlist ke andar se gaana chalane par us playlist ko auto-lock karo aur cycle reset karo
+document.addEventListener('click', (e) => {
+    const insidePlaylist = e.target.closest('#playlist-internal-songs') || e.target.closest('.playlist-detail-header');
+    if (insidePlaylist) {
+        const titleEl = document.querySelector('#playlist-header-bg h1');
+        if (titleEl && titleEl.innerText.trim()) {
+            activeLockedPlaylist = titleEl.innerText.trim();
+            localStorage.setItem('active_locked_playlist', activeLockedPlaylist);
+            setTimeout(() => resetPlaylistCycle(true), 50);
+        }
+    }
+}, true);
+
+function getActivePlaylistIndices() {
+    if (typeof userLibrary === 'undefined' || !userLibrary.playlists) return [];
+
+    // 1. Pehle check karo ki locked playlist mein current song hai ya nahi
+    if (activeLockedPlaylist && userLibrary.playlists[activeLockedPlaylist]) {
+        const list = userLibrary.playlists[activeLockedPlaylist]
+            .map(entry => resolveSongIndex(entry))
+            .filter(idx => idx !== -1 && playlist[idx]);
+        if (list.includes(currentIndex)) return list;
+    }
+
+    // 2. Warna woh playlist dhoondho jisme current song actually hai
+    for (const plName of Object.keys(userLibrary.playlists)) {
+        const list = userLibrary.playlists[plName]
+            .map(entry => resolveSongIndex(entry))
+            .filter(idx => idx !== -1 && playlist[idx]);
+        if (list.includes(currentIndex)) {
+            if (activeLockedPlaylist !== plName) {
+                activeLockedPlaylist = plName;
+                localStorage.setItem('active_locked_playlist', plName);
+                resetPlaylistCycle(true);
+            }
+            return list;
+        }
+    }
+
+    return [];
+}
+
+window.nextSong = function() {
+    if (playerQueueMode === 'playlist') {
+        const plIndices = getActivePlaylistIndices();
+        if (plIndices.length > 0) {
+            // Current song ko played mark karo
+            playlistPlayedTracker.add(currentIndex);
+
+            // Check karo kya is playlist ke saare gaane (25..30..01..24) baj chuke hain?
+            const unplayedExists = plIndices.some(idx => !playlistPlayedTracker.has(idx));
+
+            if (!unplayedExists) {
+                // Saare gaane complete! Ab automatically Straight mode par wapas aa jao
+                playerQueueMode = 'straight';
+                localStorage.setItem('player_queue_mode', 'straight');
+                playlistPlayedTracker.clear();
+                updatePlayerModeButtonUI(findPlayerModeButton());
+                if (typeof showTempMessage === 'function') {
+                    showTempMessage(` Playlist finished • Switched to Straight`);
+                }
+                // Neeche Straight mode ke code se normal agla gaana chalega
+            } else {
+                // Wrap-around: 25 -> 26 -> ... -> 30 -> 01 -> 02 -> ... -> 24
+                const pos = plIndices.indexOf(currentIndex);
+                let nextIdx = -1;
+
+                for (let step = 1; step <= plIndices.length; step++) {
+                    const candidate = plIndices[(pos + step) % plIndices.length];
+                    if (!playlistPlayedTracker.has(candidate)) {
+                        nextIdx = candidate;
+                        break;
+                    }
+                }
+
+                if (nextIdx !== -1) {
+                    currentIndex = nextIdx;
+                    playlistPlayedTracker.add(currentIndex);
+                    loadSong(currentIndex);
+                    if (audio) audio.play();
+                    if (typeof updatePlayIcons === 'function') updatePlayIcons(true);
+                    return;
+                }
+            }
+        }
+    }
+
+    // Straight Mode (Normal Library Sequence)
+    if (playlist.length > 0) {
+        currentIndex = (currentIndex + 1) % playlist.length;
+        loadSong(currentIndex);
+        if (audio) audio.play();
+        if (typeof updatePlayIcons === 'function') updatePlayIcons(true);
+    }
+};
+
+window.prevSong = function() {
+    if (playerQueueMode === 'playlist') {
+        const plIndices = getActivePlaylistIndices();
+        if (plIndices.length > 0) {
+            const pos = plIndices.indexOf(currentIndex);
+            const prevPos = (pos <= 0) ? plIndices.length - 1 : pos - 1;
+            currentIndex = plIndices[prevPos];
+            playlistPlayedTracker.add(currentIndex);
+            loadSong(currentIndex);
+            if (audio) audio.play();
+            if (typeof updatePlayIcons === 'function') updatePlayIcons(true);
+            return;
+        }
+    }
+    if (playlist.length > 0) {
+        currentIndex = (currentIndex - 1 + playlist.length) % playlist.length;
+        loadSong(currentIndex);
+        if (audio) audio.play();
+        if (typeof updatePlayIcons === 'function') updatePlayIcons(true);
+    }
+};
+
+function findPlayerModeButton() {
+    const prevEl = document.querySelector('[onclick*="prevSong"], .fa-step-backward, .fa-backward-step');
+    if (prevEl) {
+        const prevBtn = prevEl.closest('button, div[onclick]') || prevEl;
+        const leftBtn = prevBtn ? prevBtn.previousElementSibling : null;
+        if (leftBtn && !leftBtn.closest('#library-screen')) {
+            return leftBtn;
+        }
+    }
+
+    const byId = document.getElementById('shuffle-btn') || document.getElementById('mode-btn');
+    if (byId && !byId.closest('#library-screen')) return byId;
+
+    return null;
+}
+
+function updatePlayerModeButtonUI(btn) {
+    if (!btn) return;
+    const icon = btn.tagName === 'I' ? btn : btn.querySelector('i');
+    if (playerQueueMode === 'playlist') {
+        btn.style.color = '#ff3b30';
+        if (icon) {
+            icon.className = 'fas fa-list-ul';
+            icon.style.color = '#ff3b30';
+        }
+    } else {
+        btn.style.color = '#ffffff';
+        if (icon) {
+            icon.className = 'fas fa-long-arrow-alt-right';
+            icon.style.color = '#ffffff';
+        }
+    }
+}
+
+function setPlayerQueueMode(mode) {
+    playerQueueMode = mode;
+    localStorage.setItem('player_queue_mode', mode);
+    closePlayerModePopup();
+
+    const btn = findPlayerModeButton();
+    updatePlayerModeButtonUI(btn);
+
+    if (mode === 'playlist') {
+        resetPlaylistCycle(true);
+        const plIndices = getActivePlaylistIndices();
+        if (plIndices.length > 0 && activeLockedPlaylist) {
+            if (typeof showTempMessage === 'function') showTempMessage(` Playlist: ${activeLockedPlaylist} (${plIndices.length} songs)`);
+        } else {
+            if (typeof showTempMessage === 'function') showTempMessage(` Song not in any playlist`);
+        }
+    } else {
+        playlistPlayedTracker.clear();
+        if (typeof showTempMessage === 'function') showTempMessage(` Straight Mode`);
+    }
+}
+
+function closePlayerModePopup() {
+    const popup = document.getElementById('player-mode-liquid-popup');
+    if (popup) {
+        popup.style.opacity = '0';
+        popup.style.transform = 'scale(0.75) translateY(8px)';
+        setTimeout(() => popup.remove(), 200);
+    }
+}
+
+function openPlayerModePopup(btn) {
+    const existing = document.getElementById('player-mode-liquid-popup');
+    if (existing) {
+        closePlayerModePopup();
+        return;
+    }
+
+    const rect = btn.getBoundingClientRect();
+    const popup = document.createElement('div');
+    popup.id = 'player-mode-liquid-popup';
+    popup.onclick = (e) => e.stopPropagation();
+
+    const bottomPos = rect.top > 120 ? (window.innerHeight - rect.top + 14) : 160;
+    const leftPos = rect.left > 0 ? Math.max(16, rect.left - 4) : 24;
+
+    popup.style.cssText = `
+        position: fixed;
+        bottom: ${bottomPos}px;
+        left: ${leftPos}px;
+        width: 190px;
+        background: linear-gradient(145deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 100%);
+        backdrop-filter: blur(22px) saturate(185%);
+        -webkit-backdrop-filter: blur(22px) saturate(185%);
+        border: 1px solid rgba(255,255,255,0.28);
+        border-bottom-color: rgba(255,255,255,0.1);
+        border-right-color: rgba(255,255,255,0.1);
+        border-radius: 22px;
+        box-shadow: 0 20px 45px rgba(0,0,0,0.65), inset 0 1px 1px rgba(255,255,255,0.35);
+        z-index: 2147483647;
+        overflow: hidden;
+        transform-origin: bottom left;
+        opacity: 0;
+        transform: scale(0.75) translateY(8px);
+        transition: transform 0.34s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.22s ease;
+    `;
+
+    const isStraight = playerQueueMode === 'straight';
+    const isPlaylist = playerQueueMode === 'playlist';
+
+    popup.innerHTML = `
+        <div id="mode-opt-straight" style="padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 15px; font-weight: ${isStraight ? '700' : '500'}; cursor: pointer; border-bottom: 0.5px solid rgba(255,255,255,0.16);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-long-arrow-alt-right" style="width: 16px; color: rgba(255,255,255,0.9);"></i>
+                <span>Straight</span>
+            </div>
+            ${isStraight ? '<i class="fas fa-check" style="color: #ff3b30; font-size: 14px;"></i>' : ''}
+        </div>
+        <div id="mode-opt-playlist" style="padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 15px; font-weight: ${isPlaylist ? '700' : '500'}; cursor: pointer;">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-list-ul" style="width: 16px; color: rgba(255,255,255,0.9);"></i>
+                <span>Playlist</span>
+            </div>
+            ${isPlaylist ? '<i class="fas fa-check" style="color: #ff3b30; font-size: 14px;"></i>' : ''}
+        </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    requestAnimationFrame(() => {
+        popup.style.opacity = '1';
+        popup.style.transform = 'scale(1) translateY(0)';
+    });
+
+    document.getElementById('mode-opt-straight').onclick = () => setPlayerQueueMode('straight');
+    document.getElementById('mode-opt-playlist').onclick = () => setPlayerQueueMode('playlist');
+}
+
+document.addEventListener('click', (e) => {
+    const modeBtn = findPlayerModeButton();
+    if (modeBtn && (e.target === modeBtn || modeBtn.contains(e.target))) {
+        e.stopImmediatePropagation();
+        e.preventDefault();
+        openPlayerModePopup(modeBtn);
+        return;
+    }
+
+    const popup = document.getElementById('player-mode-liquid-popup');
+    if (popup && !popup.contains(e.target)) {
+        closePlayerModePopup();
+    }
+}, true);
+
+setInterval(() => {
+    const btn = findPlayerModeButton();
+    if (btn && !btn.closest('#library-screen') && !btn.dataset.modeStyled) {
+        btn.dataset.modeStyled = 'true';
+        btn.removeAttribute('onclick');
+        updatePlayerModeButtonUI(btn);
+    }
+}, 500);
+
+
