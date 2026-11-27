@@ -1035,6 +1035,7 @@ async function renderPlaylist() {
         div.className = "song-item";
         div.id = `browse-row-${index}`;
         
+                div.dataset.songIdx = index;
         const isCurrent = (index === currentIndex);
         const isPaused = isCurrent && audio && audio.paused;
         const isSelected = selectedSongIndices.has(index);
@@ -1055,7 +1056,7 @@ async function renderPlaylist() {
         div.innerHTML = `
             <div class="song-info-container" style="display: flex; align-items: center; flex: 1; min-width: 0; cursor: pointer;">
                 ${isMultiSelectMode ? `
-                    <div style="margin-right: 12px; flex-shrink: 0; font-size: 20px; color: ${isSelected ? '#ff3b30' : 'rgba(255,255,255,0.35)'};">
+                    <div class="multi-select-check" style="margin-right: 12px; flex-shrink: 0; font-size: 20px; color: ${isSelected ? '#ff3b30' : 'rgba(255,255,255,0.35)'};">
                         <i class="${isSelected ? 'fas fa-check-circle' : 'far fa-circle'}"></i>
                     </div>
                 ` : ''}
@@ -1065,17 +1066,17 @@ async function renderPlaylist() {
                     <p style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${song.artist || 'Unknown Artist'}</p>
                 </div>
             </div>
-            ${!isMultiSelectMode ? `
-                <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0;">
+            <div style="display: ${isMultiSelectMode ? 'none' : 'flex'}; align-items: center; gap: 12px; flex-shrink: 0;">
+                <div class="status-container">
                     ${isCurrent ? `
                         <div class="playing-animation ${isPaused ? 'paused' : ''}">
                             <span></span><span></span><span></span>
                         </div>` : ''}
-                    <div class="song-menu-btn" onclick="event.stopPropagation(); openSongMenu(event, ${index})">
-                        <i class="fas fa-ellipsis-v"></i>
-                    </div>
                 </div>
-            ` : ''}`;
+                <div class="song-menu-btn" onclick="event.stopPropagation(); openSongMenu(event, ${index})">
+                    <i class="fas fa-ellipsis-v"></i>
+                </div>
+            </div>`;
 
         const infoBox = div.querySelector('.song-info-container');
         let pressTimer = null;
@@ -1504,21 +1505,28 @@ function updatePlayingUI() {
     document.querySelectorAll('.song-item h4').forEach(h4 => h4.style.color = 'white');
     document.querySelectorAll('.playing-animation').forEach(a => a.remove());
 
-    if (!audio || !audio.src) return;
+    if (typeof currentIndex !== 'number' || currentIndex < 0) return;
 
     const allItems = document.querySelectorAll('.song-item');
     allItems.forEach((item) => {
-        const infoContainer = item.querySelector('.song-info-container');
-        const onclickAttr = infoContainer ? infoContainer.getAttribute('onclick') : null;
-        const match = onclickAttr ? onclickAttr.match(/loadSong\((\d+)\)/) : null;
+        let itemIdx = -1;
+
+        if (item.dataset.songIdx !== undefined) {
+            itemIdx = parseInt(item.dataset.songIdx);
+        } else {
+            const infoContainer = item.querySelector('.song-info-container');
+            const onclickAttr = infoContainer ? infoContainer.getAttribute('onclick') : null;
+            const match = onclickAttr ? onclickAttr.match(/loadSong\((\d+)\)/) : null;
+            if (match) itemIdx = parseInt(match[1]);
+        }
         
-        if (match && parseInt(match[1]) === currentIndex) {
+        if (itemIdx === currentIndex) {
             const title = item.querySelector('h4');
             if (title) title.style.color = '#1DB954';
 
             const statusContainer = item.querySelector('.status-container') || item.querySelector('div[style*="display: flex"]');
             if (statusContainer) {
-                const isPaused = audio.paused;
+                const isPaused = audio ? audio.paused : true;
                 if (!statusContainer.querySelector('.playing-animation')) {
                     const animDiv = document.createElement('div');
                     animDiv.className = `playing-animation ${isPaused ? 'paused' : ''}`;
@@ -1529,6 +1537,7 @@ function updatePlayingUI() {
         }
     });
 }
+
 
 function backToLibraryPlaylists() {
     closeAllPlaylistPopups();
