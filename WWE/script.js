@@ -1238,56 +1238,87 @@ function updateTickUI(type, status) {
 function openPlaylistDetail(playlistName) {
     const container = document.getElementById('library-content-area');
     const subNavs = document.querySelectorAll('.library-sub-nav');
+    const libScreen = document.getElementById('library-screen');
     
-    const libHeader = document.querySelector('.library-header');
+    const libHeader = document.querySelector('#library-screen .playlist-header');
     if(libHeader) libHeader.style.display = 'none'; 
     
     subNavs.forEach(nav => nav.style.setProperty('display', 'none', 'important'));
     container.classList.remove('grid-view');
+    container.style.background = 'transparent';
+
+    if (libScreen) {
+        libScreen.style.transition = 'background 0.5s ease';
+    }
 
     const songEntries = userLibrary.playlists[playlistName] || [];
     const validIndices = songEntries.map(entry => resolveSongIndex(entry)).filter(idx => idx !== -1 && playlist[idx]);
 
+    const firstSongImg = (validIndices.length > 0 && playlist[validIndices[0]] && playlist[validIndices[0]].img)
+                         ? playlist[validIndices[0]].img
+                         : defaultImg;
+
     const thumb = (userLibrary.playlistThumbs && userLibrary.playlistThumbs[playlistName]) 
                   ? userLibrary.playlistThumbs[playlistName] 
-                  : 'https://images.unsplash.com/photo-1614613535308-eb5fbd3d2c17?q=80&w=300';
+                  : firstSongImg;
+
+    const safeName = playlistName.replace(/'/g, "\\'");
 
     container.innerHTML = `
         <div class="playlist-detail-header" id="playlist-header-bg" 
-             style="display: flex; flex-direction: column; align-items: center; padding: 10px 20px; margin-top: 0; transition: background 0.5s ease;">
+             style="display: flex; flex-direction: column; align-items: center; padding: calc(env(safe-area-inset-top, 44px) + 8px) 20px 20px 20px; background: transparent !important; position: relative;">
             
-            <div style="display: flex; justify-content: space-between; width: 100%; margin-bottom: 10px; padding-top: 5px;">
-                <div onclick="backToLibraryPlaylists()" style="background: rgba(0,0,0,0.4); width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor:pointer;">
-                    <i class="fas fa-chevron-left" style="font-size: 14px; color: white;"></i>
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 20px; position: relative;">
+                <div onclick="backToLibraryPlaylists()" style="background: rgba(255,255,255,0.14); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+                    <i class="fas fa-chevron-left" style="font-size: 15px; color: white;"></i>
                 </div>
-                <div onclick="document.getElementById('pl-cover-upload').click()" style="background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; color: white; cursor:pointer; font-size: 11px; font-weight: bold; border: 1px solid rgba(255,255,255,0.2);">
-                    Edit Cover
+
+                <div style="position: relative;">
+                    <div onclick="togglePlaylistHeaderMenu(event)" style="background: rgba(255,255,255,0.14); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor:pointer;">
+                        <i class="fas fa-ellipsis-h" style="font-size: 15px; color: white;"></i>
+                    </div>
+
+                                     <div id="playlist-header-popup" onclick="event.stopPropagation()" style="display: none; position: absolute; top: 46px; right: 0; width: 198px; background: linear-gradient(145deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%); backdrop-filter: blur(0px) saturate(19%); -webkit-backdrop-filter: blur(2px) saturate(19%); border: 1px solid rgba(255,255,255,0.28); border-bottom-color: rgba(255,255,255,0.1); border-right-color: rgba(255,255,255,0.1); border-radius: 30px; box-shadow: 0 20px 45px rgba(0,0,0,0.55), inset 0 1px 1px rgba(255,255,255,0.35); z-index: 99999; overflow: hidden; transform-origin: top right; opacity: 0; transform: scale(0.75) translateY(-8px); transition: transform 0.34s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.22s ease;">
+                        <div onclick="closeAllPlaylistPopups(); document.getElementById('pl-cover-upload').click();" style="padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 14.5px; font-weight: 500; cursor: pointer; border-bottom: 0.5px solid rgba(255,255,255,0.16);">
+                            <span>Change Cover</span>
+                            <i class="fas fa-image" style="font-size: 14px; color: rgba(255,255,255,0.85);"></i>
+                        </div>
+                        <div onclick="closeAllPlaylistPopups(); deletePlaylist('${safeName}');" style="padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; color: #ff453a; font-size: 14.5px; font-weight: 600; cursor: pointer;">
+                            <span>Delete Playlist</span>
+                            <i class="fas fa-trash-alt" style="font-size: 14px;"></i>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            <input type="file" id="pl-cover-upload" hidden accept="image/*" onchange="uploadPlaylistCover(event, '${playlistName.replace(/'/g, "\\'")}')">
+            <input type="file" id="pl-cover-upload" hidden accept="image/*" onchange="uploadPlaylistCover(event, '${safeName}')">
 
             <img id="pl-detail-img" src="${thumb}" 
-                 style="width: 170px; height: 170px; border-radius: 6px; object-fit: cover; box-shadow: 0 10px 35px rgba(0,0,0,0.6);">
+                 style="width: 235px; height: 235px; border-radius: 14px; object-fit: cover; box-shadow: 0 20px 50px rgba(0,0,0,0.65);">
             
-            <div style="text-align: center; margin-top: 12px;">
-                <h1 style="font-size: 24px; font-weight: 800; color: white; margin: 0; letter-spacing: -0.5px;">${playlistName}</h1>
-                <p style="color: rgba(255,255,255,0.6); margin-top: 2px; font-size: 12px; font-weight: 500;">Playlist • ${validIndices.length} songs</p>
+            <div style="text-align: center; margin-top: 18px; width: 100%;">
+                <h1 style="font-size: 24px; font-weight: 800; color: white; margin: 0; letter-spacing: -0.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${playlistName}</h1>
+                <p style="color: rgba(255,255,255,0.72); margin-top: 4px; font-size: 14px; font-weight: 500;">Playlist • ${validIndices.length} songs</p>
             </div>
-            
-            <div onclick="deletePlaylist('${playlistName.replace(/'/g, "\\'")}')" style="margin-top: 8px; color: rgba(255,255,255,0.25); cursor:pointer; font-size: 11px;">
-                <i class="fas fa-trash"></i> Delete
+
+            <div style="display: flex; align-items: center; justify-content: center; gap: 16px; width: 100%; margin-top: 20px;">
+                <button onclick="playPlaylistOrder('${safeName}', true)" style="width: 48px; height: 48px; border-radius: 50%; border: none; background: rgba(255,255,255,0.16); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); color: white; font-size: 17px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+                    <i class="fas fa-random"></i>
+                </button>
+                <button onclick="playPlaylistOrder('${safeName}', false)" style="flex: 1; max-width: 190px; height: 48px; border-radius: 24px; border: none; background: #ffffff; color: #000000; font-size: 16px; font-weight: 700; display: flex; align-items: center; justify-content: center; gap: 8px; cursor: pointer; box-shadow: 0 8px 20px rgba(0,0,0,0.25);">
+                    <i class="fas fa-play" style="font-size: 14px;"></i> Play
+                </button>
             </div>
         </div>
 
-        <div id="playlist-internal-songs" style="padding: 5px 0 160px 0; background: transparent;"></div>
+        <div id="playlist-internal-songs" style="padding: 6px 0 170px 0; background: transparent !important;"></div>
     `;
 
     updatePlaylistAdaptiveColor(thumb);
 
     const listArea = document.getElementById('playlist-internal-songs');
     if (validIndices.length === 0) {
-        listArea.innerHTML = `<p style="text-align:center; padding:40px; color:#666;">No songs yet.</p>`;
+        listArea.innerHTML = `<p style="text-align:center; padding:40px; color:rgba(255,255,255,0.5);">No songs yet.</p>`;
     } else {
         validIndices.forEach(idx => {
             const song = playlist[idx];
@@ -1295,25 +1326,127 @@ function openPlaylistDetail(playlistName) {
 
             const div = document.createElement('div');
             div.className = "song-item";
-            div.id = `song-item-${idx}`; 
+            div.id = `song-item-${idx}`;
+            div.style.cssText = "background: transparent !important; border-bottom: 0.5px solid rgba(255,255,255,0.08); margin: 0 16px; padding: 10px 4px; position: relative;";
             div.innerHTML = `
-                <div class="song-info-container" onclick="loadSong(${idx}); if(audio) audio.play(); updatePlayIcons(true);" style="cursor: pointer;">
-                    <img src="${song.img || defaultImg}" style="border-radius: 4px; width: 45px; height: 45px;">
-                    <div>
-                        <h4 class="song-name-text" style="font-size: 14px; margin-bottom: 2px;">${song.name || 'Unknown'}</h4>
-                        <p style="font-size: 12px;">${song.artist || 'Unknown'}</p>
+                <div class="song-info-container" onclick="loadSong(${idx}); if(audio) audio.play(); updatePlayIcons(true);" style="cursor: pointer; min-width: 0; flex: 1; background: transparent !important;">
+                    <img src="${song.img || defaultImg}" style="border-radius: 6px; width: 48px; height: 48px; flex-shrink: 0;">
+                    <div style="min-width: 0; flex: 1;">
+                        <h4 class="song-name-text" style="font-size: 15px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${song.name || 'Unknown'}</h4>
+                        <p style="font-size: 12px; color: rgba(255,255,255,0.65); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${song.artist || 'Unknown'}</p>
                     </div>
                 </div>
-                <div style="display: flex; align-items: center; gap: 15px;">
+                <div style="display: flex; align-items: center; gap: 12px; flex-shrink: 0; position: relative;">
                     <div class="status-container"></div>
-                    <div class="song-menu-btn" onclick="confirmRemoveFromPlaylist(event, '${playlistName.replace(/'/g, "\\'")}', ${idx})">
-                        <i class="fas fa-trash-alt" style="color: rgba(255,255,255,0.15); font-size: 13px;"></i>
+                    <div class="song-menu-btn" onclick="openPlaylistSongPopup(event, '${safeName}', ${idx})" style="padding: 8px 6px; cursor: pointer;">
+                        <i class="fas fa-ellipsis-h" style="color: rgba(255,255,255,0.55); font-size: 14px;"></i>
                     </div>
                 </div>`;
             listArea.appendChild(div);
         });
     }
     updatePlayingUI();
+}
+
+function togglePlaylistHeaderMenu(e) {
+    e.stopPropagation();
+    const popup = document.getElementById('playlist-header-popup');
+    const existingSongPopup = document.getElementById('playlist-song-floating-popup');
+    if (existingSongPopup) existingSongPopup.remove();
+
+    if (!popup) return;
+
+    if (popup.style.display === 'block') {
+        popup.style.opacity = '0';
+        popup.style.transform = 'scale(0.75) translateY(-8px)';
+        setTimeout(() => { popup.style.display = 'none'; }, 220);
+    } else {
+        popup.style.display = 'block';
+        requestAnimationFrame(() => {
+            popup.style.opacity = '1';
+            popup.style.transform = 'scale(1) translateY(0)';
+        });
+    }
+}
+
+function openPlaylistSongPopup(e, playlistName, songIdx) {
+    e.stopPropagation();
+    closeAllPlaylistPopups();
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const popup = document.createElement('div');
+    popup.id = 'playlist-song-floating-popup';
+    popup.onclick = (ev) => ev.stopPropagation();
+    popup.style.cssText = `
+        position: fixed;
+        top: ${Math.min(rect.bottom + 6, window.innerHeight - 130)}px;
+        right: 20px;
+        width: 205px;
+        background: linear-gradient(145deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%);
+        backdrop-filter: blur(0px) saturate(9%);
+        -webkit-backdrop-filter: blur(2px) saturate(9%);
+        border: 0.2px solid rgba(255,255,255,0.28);
+        border-bottom-color: rgba(255,255,255,0.1);
+        border-right-color: rgba(255,255,255,0.1);
+        border-radius: 22px;
+        box-shadow: 0 20px 45px rgba(0,0,0,0.6), inset 0 1px 1px rgba(255,255,255,0.35);
+        z-index: 99999;
+        overflow: hidden;
+        transform-origin: top right;
+        opacity: 0;
+        transform: scale(0.75) translateY(-8px);
+        transition: transform 0.34s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.22s ease;
+    `;
+
+    popup.innerHTML = `
+        <div id="pl-popup-remove-btn" style="padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; color: #ff453a; font-size: 14.5px; font-weight: 600; cursor: pointer;">
+            <span>Remove from Library</span>
+            <i class="fas fa-trash-alt" style="font-size: 13.5px;"></i>
+        </div>
+    `;
+
+    document.body.appendChild(popup);
+
+    requestAnimationFrame(() => {
+        popup.style.opacity = '1';
+        popup.style.transform = 'scale(1) translateY(0)';
+    });
+
+    document.getElementById('pl-popup-remove-btn').onclick = () => {
+        closeAllPlaylistPopups();
+        confirmRemoveFromPlaylist(null, playlistName, songIdx);
+    };
+}
+
+function closeAllPlaylistPopups() {
+    const headerPopup = document.getElementById('playlist-header-popup');
+    if (headerPopup && headerPopup.style.display === 'block') {
+        headerPopup.style.opacity = '0';
+        headerPopup.style.transform = 'scale(0.75) translateY(-8px)';
+        setTimeout(() => { headerPopup.style.display = 'none'; }, 200);
+    }
+    const songPopup = document.getElementById('playlist-song-floating-popup');
+    if (songPopup) {
+        songPopup.style.opacity = '0';
+        songPopup.style.transform = 'scale(0.75) translateY(-8px)';
+        setTimeout(() => { songPopup.remove(); }, 200);
+    }
+}
+
+document.addEventListener('click', closeAllPlaylistPopups);
+
+function playPlaylistOrder(playlistName, shuffle = false) {
+    const entries = userLibrary.playlists[playlistName] || [];
+    const validIndices = entries.map(e => resolveSongIndex(e)).filter(idx => idx !== -1 && playlist[idx]);
+    if (validIndices.length === 0) return;
+
+    const chosenIdx = shuffle 
+        ? validIndices[Math.floor(Math.random() * validIndices.length)] 
+        : validIndices[0];
+
+    loadSong(chosenIdx);
+    if (audio) audio.play();
+    updatePlayIcons(true);
 }
 
 function updatePlayingUI() {
@@ -1347,6 +1480,13 @@ function updatePlayingUI() {
 }
 
 function backToLibraryPlaylists() {
+    closeAllPlaylistPopups();
+    const libScreen = document.getElementById('library-screen');
+    if (libScreen) libScreen.style.removeProperty('background');
+
+    const libHeader = document.querySelector('#library-screen .playlist-header');
+    if(libHeader) libHeader.style.display = 'flex';
+
     const subNavs = document.querySelectorAll('.library-sub-nav');
     subNavs.forEach(nav => nav.style.setProperty('display', 'flex', 'important'));
     document.documentElement.style.setProperty('--pl-pl-bg-color', '#121212');
@@ -1355,7 +1495,7 @@ function backToLibraryPlaylists() {
 }
 
 function confirmRemoveFromPlaylist(e, playlistName, songIdx) {
-    e.stopPropagation();
+    if (e) e.stopPropagation();
     if(confirm("Remove this song from " + playlistName + "?")) {
         const songKey = getSongKey(playlist[songIdx]);
         userLibrary.playlists[playlistName] = userLibrary.playlists[playlistName].filter(item => item !== songKey && item !== songIdx);
@@ -1363,6 +1503,7 @@ function confirmRemoveFromPlaylist(e, playlistName, songIdx) {
         openPlaylistDetail(playlistName);
     }
 }
+
 
 /* ================= STEP 4: CREATE PLAYLIST POPUP LOGIC ================= */
 
@@ -2065,9 +2206,10 @@ function createHomeRow(title, indices, showSeeAll) {
             row += `
                 <div class="home-card" onclick="loadSong(${idx});" style="min-width:145px; max-width:145px; cursor:pointer;">
                     <img src="${s.img || defaultImg}" style="width:145px; height:145px; border-radius:12px; object-fit:cover; box-shadow:0 8px 20px rgba(0,0,0,0.5); background:#1c1c1e;">
-                    <p style="margin:10px 0 2px; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.name}</p>
-                    <span style="font-size:11px; color:#8e8e93;">${s.artist}</span>
+                                      <p style="margin:10px 0 2px; font-size:13px; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.name}</p>
+                    <span style="display:block; font-size:11px; color:#8e8e93; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">${s.artist}</span>
                 </div>`;
+
         }
     });
 
@@ -2213,22 +2355,74 @@ function uploadPlaylistCover(event, playlistName) {
     }
 }
 
-/**
-/* ================= ADAPTIVE COLOR FIX ================= */
+/* ================= ADAPTIVE COLOR FIX (FULL SCREEN CONNECTED) ================= */
 function updatePlaylistAdaptiveColor(imgSrc) {
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    img.src = imgSrc;
-    img.onload = function() {
-        const canvas = document.createElement('canvas');
-        const ctx = canvas.getContext('2d');
-        canvas.width = 1; canvas.height = 1;
-        ctx.drawImage(img, 0, 0, 1, 1);
-        const d = ctx.getImageData(0,0,1,1).data;
-        const rgb = `rgb(${Math.floor(d[0]*0.6)},${Math.floor(d[1]*0.6)},${Math.floor(d[2]*0.6)})`;
-        document.documentElement.style.setProperty('--pl-bg-color', rgb);
+    const applyGradient = (r, g, b) => {
+        const topR = Math.floor(r * 0.65);
+        const topG = Math.floor(g * 0.65);
+        const topB = Math.floor(b * 0.65);
+        const midR = Math.floor(r * 0.30);
+        const midG = Math.floor(g * 0.30);
+        const midB = Math.floor(b * 0.30);
+
+        const fullGradient = `linear-gradient(180deg, rgb(${topR},${topG},${topB}) 0%, rgb(${midR},${midG},${midB}) 45%, #000000 100%)`;
+
+        document.documentElement.style.setProperty('--pl-bg-color', `rgb(${topR},${topG},${topB})`);
+
+        const libScreen = document.getElementById('library-screen');
+        const contentArea = document.getElementById('library-content-area');
+
+        if (libScreen) {
+            libScreen.style.removeProperty('min-height');
+            libScreen.style.setProperty('background', fullGradient, 'important');
+        }
+        if (contentArea) {
+            contentArea.style.setProperty('background', 'transparent', 'important');
+        }
     };
-} // 🟢 File ends here with correct bracket balance
+
+    const img = new Image();
+    if (!imgSrc.startsWith('data:')) {
+        img.crossOrigin = "Anonymous";
+    }
+
+    img.onload = function() {
+        try {
+            const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
+            canvas.width = 10;
+            canvas.height = 10;
+            ctx.drawImage(img, 0, 0, 10, 10);
+            const data = ctx.getImageData(2, 2, 6, 6).data;
+
+            let bestR = 110, bestG = 55, bestB = 85, maxScore = -1;
+            for (let i = 0; i < data.length; i += 4) {
+                const r = data[i], g = data[i + 1], b = data[i + 2];
+                const max = Math.max(r, g, b), min = Math.min(r, g, b);
+                const saturation = max - min;
+                const brightness = (r + g + b) / 3;
+                if (brightness > 25 && brightness < 230) {
+                    const score = saturation * 1.5 + brightness * 0.4;
+                    if (score > maxScore) {
+                        maxScore = score;
+                        bestR = r; bestG = g; bestB = b;
+                    }
+                }
+            }
+            applyGradient(bestR, bestG, bestB);
+        } catch (e) {
+            applyGradient(110, 55, 85);
+        }
+    };
+
+    img.onerror = function() {
+        applyGradient(110, 55, 85);
+    };
+
+    img.src = imgSrc;
+}
+
+
 
 /* =================  LOCAL STORAGE ENGINE (V27 + PERSISTENT) ================= */
 
