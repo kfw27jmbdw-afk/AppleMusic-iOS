@@ -3459,14 +3459,12 @@ let isWirelessConnected = localStorage.getItem('is_wireless_connected') === 'tru
 function getDeviceSVG(isWireless) {
     const color = isWireless ? 'rgba(255, 255, 255, 0.9)' : 'rgba(255, 255, 255, 0.62)';
     if (!isWireless) {
-        // Official Apple AirPlay Audio Icon (iPhone mode)
         return `<svg width="22" height="22" viewBox="0 0 24 24" fill="none">
             <path d="M6.5 17.2A7.5 7.5 0 1 1 17.5 17.2" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
             <path d="M9.2 14.5a4 4 0 1 1 5.6 0" stroke="${color}" stroke-width="2" stroke-linecap="round"/>
             <path d="M12 14.5L16.5 20H7.5L12 14.5Z" fill="${color}"/>
         </svg>`;
     }
-    // Exact Apple Music Solid Speaker + Bluetooth Rune (image_8468c3 look)
     return `<svg width="23" height="23" viewBox="0 0 26 24" fill="none">
         <path d="M3 9.2C3 8.54 3.54 8 4.2 8H7.3L11.6 4.4C12.25 3.86 13.2 4.32 13.2 5.16V18.84C13.2 19.68 12.25 20.14 11.6 19.6L7.3 16H4.2C3.54 16 3 15.46 3 14.8V9.2Z" fill="${color}"/>
         <path d="M16.2 8.2L22.2 14.2L19.1 17.3V6.7L22.2 9.8L16.2 15.8" stroke="${color}" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round"/>
@@ -3607,6 +3605,19 @@ function findFullControlsRow() {
     return null;
 }
 
+function openRealIOSAudioPicker() {
+    if (typeof audio !== 'undefined' && audio) {
+        audio.setAttribute('x-webkit-airplay', 'allow');
+        if (typeof audio.webkitShowPlaybackTargetPicker === 'function') {
+            audio.webkitShowPlaybackTargetPicker();
+            return;
+        }
+    }
+    if (typeof showTempMessage === 'function') {
+        showTempMessage(' Open Control Center → AirPlay icon to switch audio');
+    }
+}
+
 function mountBottomDeviceIndicator() {
     injectDeviceAnimStyles();
     const existing = document.getElementById('player-connected-device-box');
@@ -3624,10 +3635,25 @@ function mountBottomDeviceIndicator() {
 
     const box = document.createElement('div');
     box.id = 'player-connected-device-box';
+
     box.onclick = (e) => {
         e.stopPropagation();
-        openDeviceQuickSwitcher(box);
+        openRealIOSAudioPicker();
     };
+
+    let holdTimer = null;
+    box.addEventListener('touchstart', () => {
+        holdTimer = setTimeout(() => {
+            const newName = prompt('Set your Bluetooth device name:', savedBtDeviceName);
+            if (newName && newName.trim()) {
+                savedBtDeviceName = newName.trim();
+                localStorage.setItem('saved_bt_device_name', savedBtDeviceName);
+                updateBottomDeviceUI();
+            }
+        }, 550);
+    }, { passive: true });
+    box.addEventListener('touchend', () => clearTimeout(holdTimer));
+    box.addEventListener('touchmove', () => clearTimeout(holdTimer));
 
     controlsRow.parentElement.insertBefore(box, controlsRow.nextSibling);
     updateBottomDeviceUI();
@@ -3651,131 +3677,110 @@ function updateBottomDeviceUI() {
     `;
 }
 
-// Liquid Glass Audio Output Popover
-function closeDeviceQuickSwitcher() {
-    const pop = document.getElementById('device-quick-popover');
-    if (pop) {
-        pop.style.opacity = '0';
-        pop.style.transform = 'translateX(-50%) scale(0.82) translateY(8px)';
-        setTimeout(() => pop.remove(), 180);
+let hardwarePermissionTried = false;
+
+// iOS WebKit mein hidden Bluetooth labels ko unlock karne ke liye
+async function unlockIOSHardwareLabels() {
+    if (hardwarePermissionTried) return;
+    hardwarePermissionTried = true;
+    try {
+        if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            stream.getTracks().forEach(t => t.stop()); // Turant band taaki orange dot na rahe
+        }
+    } catch (e) {}
+}
+
+// Real Hardware Check: Bluetooth connected hai ya iPhone Speaker
+async function checkActualIOSAudioRoute(animate = false) {
+    let detectedWireless = false;
+    let detectedName = savedBtDeviceName;
+
+    // 1. AirPlay check
+    if (typeof audio !== 'undefined' && audio && audio.webkitCurrentPlaybackTargetIsWireless === true) {
+        detectedWireless = true;
+    }
+
+    // 2. Real Bluetooth Hardware List check (enumerateDevices)
+    try {
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+            const devices = await navigator.mediaDevices.enumerateDevices();
+            const hasEmptyLabels = devices.some(d => !d.label);
+
+            if (hasEmptyLabels && !hardwarePermissionTried) {
+                await unlockIOSHardwareLabels();
+                return checkActualIOSAudioRoute(animate);
+            }
+
+            // Koi bhi external Bluetooth / Headset device dhoondo
+            const btDevice = devices.find(d => {
+                if (!d.label) return false;
+                const lbl = d.label.toLowerCase();
+                const isInternal = lbl.includes('iphone') || lbl.includes('built-in') || lbl.includes('internal') || lbl.includes('speaker');
+                return !isInternal;
+            });
+
+            if (btDevice && btDevice.label) {
+                detectedWireless = true;
+                const cleanName = btDevice.label
+                    .replace(/\(Bluetooth\)/gi, '')
+                    .replace(/Hands-Free/gi, '')
+                    .replace(/Stereo/gi, '')
+                    .trim();
+                if (cleanName) {
+                    detectedName = cleanName;
+                    savedBtDeviceName = cleanName;
+                    localStorage.setItem('saved_bt_device_name', cleanName);
+                }
+            }
+        }
+    } catch (e) {}
+
+    if (detectedWireless !== isWirelessConnected || (detectedWireless && detectedName !== savedBtDeviceName)) {
+        setConnectedDeviceState(detectedWireless, animate);
+    } else {
+        updateBottomDeviceUI();
     }
 }
 
-function openDeviceQuickSwitcher(anchorEl) {
-    if (document.getElementById('device-quick-popover')) {
-        closeDeviceQuickSwitcher();
-        return;
+// Native .ipa (Swift AVAudioSession) Bridge Support
+window.updateNativeAudioRoute = function(deviceName, isBluetooth) {
+    if (isBluetooth && deviceName) {
+        savedBtDeviceName = deviceName;
+        localStorage.setItem('saved_bt_device_name', deviceName);
     }
+    setConnectedDeviceState(!!isBluetooth, true);
+};
 
-    const rect = anchorEl.getBoundingClientRect();
-    const pop = document.createElement('div');
-    pop.id = 'device-quick-popover';
-    pop.onclick = (e) => e.stopPropagation();
-
-    pop.style.cssText = `
-        position: fixed;
-        bottom: ${window.innerHeight - rect.top + 10}px;
-        left: 50%;
-        width: 240px;
-        background: linear-gradient(145deg, rgba(255,255,255,0.16) 0%, rgba(255,255,255,0.05) 100%);
-        backdrop-filter: blur(26px) saturate(190%);
-        -webkit-backdrop-filter: blur(26px) saturate(190%);
-        border: 1px solid rgba(255,255,255,0.28);
-        border-radius: 22px;
-        box-shadow: 0 20px 45px rgba(0,0,0,0.65), inset 0 1px 1px rgba(255,255,255,0.35);
-        z-index: 2147483647;
-        overflow: hidden;
-        transform-origin: bottom center;
-        opacity: 0;
-        transform: translateX(-50%) scale(0.82) translateY(8px);
-        transition: transform 0.32s cubic-bezier(0.22, 1.25, 0.36, 1), opacity 0.2s ease;
-    `;
-
-    pop.innerHTML = `
-        <div id="dev-opt-bt" style="padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 14px; font-weight: ${isWirelessConnected ? '700' : '500'}; border-bottom: 0.5px solid rgba(255,255,255,0.14); cursor: pointer;">
-            <div style="display: flex; align-items: center; gap: 10px; min-width: 0;">
-                ${getDeviceSVG(true)}
-                <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${savedBtDeviceName}</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0;">
-                <i id="edit-bt-name-icon" class="fas fa-pen" style="font-size: 11px; color: rgba(255,255,255,0.5); padding: 4px;"></i>
-                ${isWirelessConnected ? '<i class="fas fa-check-circle" style="color: #30d158; font-size: 15px;"></i>' : ''}
-            </div>
-        </div>
-        <div id="dev-opt-phone" style="padding: 13px 16px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 14px; font-weight: ${!isWirelessConnected ? '700' : '500'}; border-bottom: 0.5px solid rgba(255,255,255,0.14); cursor: pointer;">
-            <div style="display: flex; align-items: center; gap: 10px;">
-                ${getDeviceSVG(false)}
-                <span>iPhone</span>
-            </div>
-            ${!isWirelessConnected ? '<i class="fas fa-check-circle" style="color: #30d158; font-size: 15px;"></i>' : ''}
-        </div>
-        <div id="dev-opt-airplay" style="padding: 12px 16px; display: flex; align-items: center; justify-content: center; gap: 6px; color: #0a84ff; font-size: 13px; font-weight: 600; cursor: pointer;">
-            <i class="fab fa-bluetooth-b"></i>
-            <span>Open iOS Output Picker</span>
-        </div>
-    `;
-
-    document.body.appendChild(pop);
-
-    requestAnimationFrame(() => {
-        pop.style.opacity = '1';
-        pop.style.transform = 'translateX(-50%) scale(1) translateY(0)';
-    });
-
-    document.getElementById('dev-opt-bt').onclick = () => {
-        setConnectedDeviceState(true, true);
-        closeDeviceQuickSwitcher();
-    };
-
-    document.getElementById('edit-bt-name-icon').onclick = (ev) => {
-        ev.stopPropagation();
-        const newName = prompt('Enter Bluetooth Device Name:', savedBtDeviceName);
-        if (newName && newName.trim()) {
-            savedBtDeviceName = newName.trim();
-            localStorage.setItem('saved_bt_device_name', savedBtDeviceName);
-            setConnectedDeviceState(true, true);
-        }
-        closeDeviceQuickSwitcher();
-    };
-
-    document.getElementById('dev-opt-phone').onclick = () => {
-        setConnectedDeviceState(false, true);
-        closeDeviceQuickSwitcher();
-    };
-
-    document.getElementById('dev-opt-airplay').onclick = () => {
-        closeDeviceQuickSwitcher();
-        if (typeof audio !== 'undefined' && audio && typeof audio.webkitShowPlaybackTargetPicker === 'function') {
-            audio.webkitShowPlaybackTargetPicker();
-        }
-    };
-}
-
-document.addEventListener('click', closeDeviceQuickSwitcher);
-
-// Native iOS Route Listener + Hardware Device Check
 function bindIOSAudioRouteEvents() {
     if (typeof audio === 'undefined' || !audio || audio.dataset.routeBound === 'true') return;
     audio.dataset.routeBound = 'true';
+    audio.setAttribute('x-webkit-airplay', 'allow');
 
-    audio.addEventListener('play', () => {
-        if (typeof audio.webkitCurrentPlaybackTargetIsWireless === 'boolean' && audio.webkitCurrentPlaybackTargetIsWireless && !isWirelessConnected) {
-            setConnectedDeviceState(true, false);
-        }
-        updateBottomDeviceUI();
-    });
-
+    audio.addEventListener('play', () => checkActualIOSAudioRoute(false));
     audio.addEventListener('pause', updateBottomDeviceUI);
-
     audio.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', () => {
-        setConnectedDeviceState(!!audio.webkitCurrentPlaybackTargetIsWireless, true);
+        checkActualIOSAudioRoute(true);
     });
 }
+
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    navigator.mediaDevices.addEventListener('devicechange', () => {
+        setTimeout(() => checkActualIOSAudioRoute(true), 300);
+    });
+}
+
+mountBottomDeviceIndicator();
+bindIOSAudioRouteEvents();
+checkActualIOSAudioRoute(false);
 
 setInterval(() => {
     mountBottomDeviceIndicator();
     bindIOSAudioRouteEvents();
-}, 600);
+    checkActualIOSAudioRoute(false);
+}, 1200);
+
+
 
 
 
