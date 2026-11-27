@@ -1315,8 +1315,8 @@ function openPlaylistDetail(playlistName) {
     const safeName = playlistName.replace(/'/g, "\\'");
 
     container.innerHTML = `
-        <div class="playlist-detail-header" id="playlist-header-bg" 
-             style="display: flex; flex-direction: column; align-items: center; padding: calc(max(env(safe-area-inset-top, 0px), 54px) + 6px) 20px 20px 20px; background: transparent !important; position: relative; z-index: 50;">
+              <div class="playlist-detail-header" id="playlist-header-bg" 
+             style="display: flex; flex-direction: column; align-items: center; padding: 68px 20px 20px 20px; background: transparent !important; position: relative; z-index: 50;">
             
             <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 18px; position: relative; z-index: 60;">
 
@@ -2801,13 +2801,17 @@ function updateMultiSelectBar() {
     if (!bar) {
         bar = document.createElement('div');
         bar.id = 'multi-select-bar';
+                const miniPlayer = document.getElementById('mini-player');
+        const hasMiniPlayer = miniPlayer && miniPlayer.style.display !== 'none' && miniPlayer.offsetHeight > 0;
+        const bottomOffset = hasMiniPlayer ? '162px' : '92px';
+
         bar.style.cssText = `
             position: fixed;
-            bottom: 88px;
+            bottom: ${bottomOffset};
             left: 14px;
             right: 14px;
             padding: 12px 14px;
-            background: linear-gradient(145deg, rgba(255,255,255,0.14) 0%, rgba(255,255,255,0.04) 100%);
+            background: linear-gradient(145deg, rgba(28,28,32,0.88) 0%, rgba(18,18,22,0.82) 100%);
             backdrop-filter: blur(22px) saturate(180%);
             -webkit-backdrop-filter: blur(22px) saturate(180%);
             border: 1px solid rgba(255,255,255,0.22);
@@ -2821,6 +2825,7 @@ function updateMultiSelectBar() {
         `;
         document.body.appendChild(bar);
     }
+
 
     const count = selectedSongIndices.size;
     const allSelected = count === playlist.length && count > 0;
@@ -2853,14 +2858,21 @@ async function bulkDeleteFromLibrary() {
     if (!confirm(`Remove ${indices.length} selected songs from library?`)) return;
 
     let savedDrive = JSON.parse(localStorage.getItem('my_drive_songs')) || [];
+    const currentSongKey = playlist[currentIndex] ? getSongKey(playlist[currentIndex]) : null;
+    const deletedKeys = new Set();
 
     indices.forEach(idx => {
         const song = playlist[idx];
         if (!song) return;
 
+        const key = getSongKey(song);
+        if (key) deletedKeys.add(key);
+
         if (song.isLocal && song.localId && typeof musicDB !== 'undefined') {
-            const tx = musicDB.transaction(["localSongs"], "readwrite");
-            tx.objectStore("localSongs").delete(song.localId);
+            try {
+                const tx = musicDB.transaction(["localSongs"], "readwrite");
+                tx.objectStore("localSongs").delete(song.localId);
+            } catch (err) {}
         }
         if (song.isDrive && song.driveId) {
             savedDrive = savedDrive.filter(s => s.id !== song.driveId);
@@ -2868,12 +2880,49 @@ async function bulkDeleteFromLibrary() {
         playlist.splice(idx, 1);
     });
 
+    // UserLibrary playlists aur favourites se bhi deleted gaane saaf karo
+    if (typeof userLibrary !== 'undefined') {
+        if (Array.isArray(userLibrary.songs)) {
+            userLibrary.songs = userLibrary.songs.filter(k => !deletedKeys.has(k));
+        }
+        if (Array.isArray(userLibrary.favourites)) {
+            userLibrary.favourites = userLibrary.favourites.filter(k => !deletedKeys.has(k));
+        }
+        if (userLibrary.playlists) {
+            Object.keys(userLibrary.playlists).forEach(pl => {
+                userLibrary.playlists[pl] = userLibrary.playlists[pl].filter(k => !deletedKeys.has(k));
+            });
+        }
+        if (typeof saveLibraryToDisk === "function") saveLibraryToDisk();
+    }
+
     localStorage.setItem('my_drive_songs', JSON.stringify(savedDrive));
     savePlaylistToDisk();
-    showTempMessage(` Removed ${indices.length} songs`);
-    exitMultiSelectMode();
+
+    // Current playing song ka index sync rakho taaki player hang na ho
+    if (playlist.length === 0) {
+        currentIndex = 0;
+        if (audio) { audio.pause(); audio.src = ""; }
+    } else if (currentSongKey) {
+        const newIdx = playlist.findIndex(s => s && getSongKey(s) === currentSongKey);
+        if (newIdx !== -1) {
+            currentIndex = newIdx;
+        } else {
+            currentIndex = Math.min(currentIndex, playlist.length - 1);
+            loadSong(currentIndex);
+        }
+    }
+
+    isMultiSelectMode = false;
+    selectedSongIndices.clear();
+    const bar = document.getElementById('multi-select-bar');
+    if (bar) bar.remove();
+
+    await renderPlaylist();
     if (typeof renderHomeScreen === "function") renderHomeScreen();
+    showTempMessage(` Removed ${indices.length} songs`);
 }
+
 
 // 2. DELETE ENGINE
 async function handleDeleteSong() {
