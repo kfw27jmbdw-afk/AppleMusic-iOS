@@ -1319,7 +1319,8 @@ function openPlaylistDetail(playlistName) {
               <div class="playlist-detail-header" id="playlist-header-bg" 
              style="display: flex; flex-direction: column; align-items: center; padding: 68px 20px 20px 20px; background: transparent !important; position: relative; z-index: 50;">
             
-            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 18px; position: relative; z-index: 60;">
+                   <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 65px !important; margin-bottom: 20px; position: relative; z-index: 60;">
+
 
                 <div onclick="backToLibraryPlaylists()" style="background: rgba(255,255,255,0.14); backdrop-filter: blur(15px); -webkit-backdrop-filter: blur(15px); width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor:pointer;">
                     <i class="fas fa-chevron-left" style="font-size: 15px; color: white;"></i>
