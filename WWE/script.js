@@ -245,6 +245,7 @@ async function startCloudSync() {
                 }
 
         savePlaylistToDisk();
+        SongMindEngine.tagLibrary(playlist);
         console.log("✅ Cloud Sync Complete! All songs are now in your Playlist.");
         
         // 5. UI Refresh: Taaki "All Songs" list mein gaane turant dikh jayein
@@ -880,6 +881,7 @@ async function loadSong(index) {
     currentIndex = index;
     const s = playlist[index];
     if(!s || !audio) return;
+SongMindEngine.ensureTag(s);
 
     // --- FAST SWITCH: Purana audio turant khatam ---
     audio.pause();
@@ -2432,6 +2434,7 @@ window.addEventListener('load', async () => {
 
     // 4. FINAL RENDERING
     await renderPlaylist();       
+    SongMindEngine.tagLibrary(playlist);
     renderHomeScreen();           
     renderLibraryContent('all');  
 
@@ -3164,6 +3167,345 @@ function renderCloudItem(song) {
 }
 /* ============================================================ */
 
+/* ==========================================================================
+    SONG MIND AI — AUTONOMOUS HYBRID BRAIN (270+ WORDS + WEB AUTO-LEARNER)
+   ========================================================================== */
+const SongMindEngine = (() => {
+  const CACHE_KEY = 'am_song_mind_tags_v1';
+  const LEARNED_KEY = 'am_song_mind_learned_v1';
+
+  let tagCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+  let learnedMemory = JSON.parse(localStorage.getItem(LEARNED_KEY) || '{}');
+  let smartHistory = new Set();
+
+  const PRE_TRAINED = {
+    Sad: [
+      'sad', 'heartbreak', 'broken', 'tears', 'cry', 'crying', 'cried', 'pain', 'painful', 'alone', 'lonely',
+      'loneliness', 'miss', 'missing', 'missed', 'hurt', 'hurting', 'grief', 'sorrow', 'regret', 'empty',
+      'goodbye', 'farewell', 'separation', 'memories', 'betray', 'betrayal', 'cheat', 'cheated', 'unfaithful',
+      'lies', 'liar', 'false', 'fade', 'faded', 'cold', 'scars', 'bleed', 'bleeding', 'leave', 'left', 'gone',
+      'dard', 'aansu', 'ashq', 'rona', 'roya', 'tanhai', 'tanha', 'zakhm', 'zakhmi', 'khamoshi', 'alvida',
+      'adhura', 'adhoori', 'majboor', 'gum', 'gham', 'bichhad', 'judai', 'bewafa', 'dhokha', 'yaad', 'sataya',
+      'chaahunga', 'toota', 'toote', 'bhula', 'ruswa', 'tadap', 'intezaar', 'khatam', 'haar', 'thak',
+      'hanju', 'rusya', 'ghata', 'kalla', 'kalli', 'tutt', 'tutteya', 'chhad', 'chhadgi', 'todya', 'taras',
+      'chodgi', 'modgi', 'nishani', 'jhunti', 'kasam', 'zehr', 'zeher', 'pile', 'falani', 'bairan', 'marjani',
+      'rog', 'vichoda', 'dukh', 'dukhi', 'pachtawa', 'ronde', 'bharam', 'dhokhebaaz',
+      'दर्द', 'आंसू', 'तन्हाई', 'जुदाई', 'बेवफा', 'धोखा', 'याद', 'रोया', 'अधूरा', 'बैरन', 'गम', 'तोड्या', 'फलाणी', 'जहर', 'थक', 'खत्म'
+    ],
+    Love: [
+      'love', 'loving', 'loved', 'romantic', 'romance', 'darling', 'sweetheart', 'soulmate', 'forever',
+      'adore', 'kiss', 'kissing', 'hug', 'hugged', 'beautiful', 'gorgeous', 'angel', 'crush', 'affection',
+      'marry', 'married', 'wedding', 'bride', 'groom', 'hold', 'together', 'belong', 'destiny', 'heaven',
+      'ishq', 'pyar', 'pyaar', 'mohabbat', 'dil', 'jaan', 'jaanu', 'sanam', 'saiyaan', 'naina', 'nazar',
+      'sajna', 'sajni', 'humsafar', 'mahboob', 'mehbooba', 'ashiq', 'aashiqui', 'deewana', 'deewani',
+      'khwab', 'baahon', 'saath', 'saathi', 'rooh', 'husn', 'ada', 'muskaan', 'chehra', 'jodi', 'chahat',
+      'dhadkan', 'saans', 'ibadat', 'chand', 'chaand', 'sitara', 'dilbar', 'akhiyan', 'chann', 'sohniye',
+      'sohna', 'mahiya', 'mahi', 'supna', 'laado', 'gori', 'chundadi', 'ranjha', 'heer', 'mutiyar',
+      'phulkari', 'kangana', 'jhanjar', 'bhabhi', 'byah', 'diljani', 'sajjan', 'mehndi', 'sindoor',
+      'प्यार', 'इश्क़', 'इश्क', 'मोहब्बत', 'दिल', 'जान', 'सनम', 'सजना', 'लाडो', 'गोरी', 'नज़र', 'चाँद', 'ख्वाब', 'धड़कन'
+    ],
+    Party: [
+      'party', 'dance', 'dancing', 'danced', 'club', 'clubbing', 'dj', 'remix', 'disco', 'drink', 'drinking',
+      'drinks', 'alcohol', 'liquor', 'bottle', 'bottles', 'drunk', 'hangover', 'weekend', 'saturday', 'friday',
+      'floor', 'dancefloor', 'celebrate', 'celebration', 'bass', 'groove', 'vibe', 'vibes', 'shots', 'champagne',
+      'whiskey', 'vodka', 'tequila', 'beer', 'cheers', 'lit', 'banger', 'rhythm',
+      'nach', 'naach', 'nachle', 'daaru', 'daru', 'peg', 'theka', 'sharab', 'sharaab', 'nasha', 'nashe',
+      'speaker', 'thumka', 'chalti', 'kamariya', 'jawaani', 'latka', 'jhatka', 'masti', 'hungama', 'nakhra',
+      'mehfil', 'dhol', 'dholak', 'shor', 'dhamaal', 'patola', 'chikni', 'ghungroo',
+      'bhangra', 'patiala', 'nacch', 'gidha', 'giddha', 'lalkara', 'boli', 'boliyan', 'laung', 'botal', 'jashn',
+      'नाच', 'दारू', 'शराब', 'नशा', 'मस्ती', 'जवानी', 'कमरिया', 'ठुमका', 'झटका', 'धमाल', 'महफिल', 'बोतल', 'जश्न'
+    ],
+    Aura: [
+      'king', 'kings', 'boss', 'power', 'powerful', 'empire', 'throne', 'crown', 'mafia', 'gang', 'gangster',
+      'weapon', 'weapons', 'gun', 'guns', 'rifle', 'bullet', 'bullets', 'car', 'cars', 'enemy', 'enemies',
+      'haters', 'fear', 'feared', 'respect', 'attitude', 'swag', 'flex', 'hustle', 'grind', 'legend', 'legendary',
+      'dominance', 'dominant', 'brotherhood', 'rules', 'ruler', 'outlaw', 'savage', 'beast', 'alpha', 'unstoppable',
+      'money', 'cash', 'millions', 'loyal', 'loyalty', 'blood', 'war', 'warrior', 'victory', 'champ',
+      'yaar', 'yaari', 'yaaran', 'beli', 'vairi', 'asla', 'aslaa', 'gaddi', 'gaddiyan', 'thar', 'fortuner',
+      'shonk', 'rutba', 'anakh', 'mucch', 'kundi', 'pind', 'ghoda', 'karobaar', 'khauf', 'dabang', 'dabangg',
+      'sarkar', 'jatt', 'jaat', 'jaatni', 'sher', 'badmash', 'badmashi', 'hooter', 'awara', 'system', 'systumm',
+      'dunali', 'velly', 'raula', 'rob', 'rohb', 'kaafila', 'shikaar', 'kabze', 'choudhar', 'kalesh', 'bahmani',
+      'avastha', 'tashan', 'aukad', 'aukaat', 'khatarnak', 'gunda', 'raj', 'raja', 'baap', 'sheran', 'zidd',
+      'यार', 'यारी', 'असला', 'बदमाश', 'बदमाशी', 'चौधर', 'खौफ', 'सरकार', 'रुतबा', 'शेर', 'कब्जे', 'टशन', 'औकात', 'सिस्टम'
+    ]
+  };
+
+  const KNOWN_SET = new Set(Object.values(PRE_TRAINED).flat().map(w => w.toLowerCase()));
+
+  function saveState() {
+    localStorage.setItem(CACHE_KEY, JSON.stringify(tagCache));
+    localStorage.setItem(LEARNED_KEY, JSON.stringify(learnedMemory));
+  }
+
+  function makeKey(song) {
+    if (!song) return '';
+    return `${(song.name || '').toLowerCase().trim()}__${(song.artist || '').toLowerCase().trim()}`;
+  }
+
+  async function fetchTimeout(url, ms = 2200) {
+    const ctrl = new AbortController();
+    const id = setTimeout(() => ctrl.abort(), ms);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      clearTimeout(id);
+      return res;
+    } catch (e) {
+      clearTimeout(id);
+      throw e;
+    }
+  }
+
+  function cleanNoise(txt) {
+    if (!txt) return '';
+    return txt
+      .split(/\r?\n/)
+      .filter(l => !/play this beat|on the beat|music by|lyrics by|composed by|directed by|copyright/i.test(l))
+      .join(' ')
+      .replace(/play this beat/gi, '')
+      .trim();
+  }
+
+  async function fetchFastLyrics(title, artist) {
+    const cleanTitle = title.replace(/[’‘]/g, "'").replace(/\(.*?\)|\[.*?\]|- From.*$/gi, '').trim();
+    const tokens = artist.toLowerCase().split(/,|&|feat\.|ft\.|\|/i).map(x => x.trim()).filter(x => x.length >= 3);
+    const primary = tokens[0] || '';
+
+    const p1 = fetchTimeout(`https://lrclib.net/api/search?track_name=${encodeURIComponent(cleanTitle)}&artist_name=${encodeURIComponent(primary)}`)
+      .then(r => r.json())
+      .then(list => {
+        if (!Array.isArray(list)) return '';
+        const m = list.find(x => (x.plainLyrics || x.syncedLyrics) && tokens.some(tok => (x.artistName || '').toLowerCase().includes(tok)));
+        return m ? cleanNoise(m.plainLyrics || m.syncedLyrics).slice(0, 1500) : '';
+      }).catch(() => '');
+
+    const p2 = fetchTimeout(`https://api.lyrics.ovh/v1/${encodeURIComponent(primary)}/${encodeURIComponent(cleanTitle)}`)
+      .then(r => r.ok ? r.json() : null)
+      .then(d => d?.lyrics ? cleanNoise(d.lyrics).slice(0, 1500) : '')
+      .catch(() => '');
+
+    const [r1, r2] = await Promise.all([p1, p2]);
+    return r1 || r2 || '';
+  }
+
+  function scoreText(title, combinedText) {
+    const text = combinedText.toLowerCase().replace(/[’‘]/g, "'");
+    const scores = { Love: 0, Sad: 0, Party: 0, Aura: 0 };
+
+    const rules = [
+      { rx: /\b(i'm done|im done|done with|had enough|tired of|sick of|give up|walk away|let go|move on|over you|exhausted)\b/g, mood: 'Sad', pts: 15 },
+      { rx: /\b(not like|ain't like|never like|nothing like|different breed|my level)\b/g, mood: 'Aura', pts: 14 },
+      { rx: /\b(broke my heart|broken heart|todya dil|dil tod|fake love|no love|left me|false promise)\b/g, mood: 'Sad', pts: 14 }
+    ];
+
+    rules.forEach(r => {
+      if (r.rx.test(text)) {
+        scores[r.mood] += r.pts;
+        scores.Love -= 6;
+      }
+    });
+
+    Object.entries(PRE_TRAINED).forEach(([mood, list]) => {
+      list.forEach(w => {
+        if (/[\u0900-\u097F]/.test(w)) {
+          if (text.includes(w)) scores[mood] += 4.5;
+        } else {
+          const m = text.match(new RegExp(`\\b${w}\\b`, 'g'));
+          if (m) scores[mood] += Math.min(m.length, 5) * 2.4 + (title.toLowerCase().includes(w) ? 3.5 : 0);
+        }
+      });
+    });
+
+    Object.entries(learnedMemory).forEach(([word, meaning]) => {
+      if (text.includes(word)) {
+        Object.entries(PRE_TRAINED).forEach(([mood, list]) => {
+          if (list.some(k => meaning.includes(k))) scores[mood] += 3;
+        });
+      }
+    });
+
+    if (scores.Sad >= 11 && scores.Love > 0) scores.Love = Math.round(scores.Love * 0.35);
+    return scores;
+  }
+
+  async function deepLearnFromWeb(title, artist, lyrics) {
+    const cleanTitle = title.replace(/[’‘]/g, "'").replace(/\(.*?\)|\[.*?\]|- From.*$/gi, '').trim();
+    const primary = artist.split(/,|&|feat\.|ft\./i)[0].trim();
+    let webSnippet = '';
+
+    try {
+      const q = `"${cleanTitle}" "${primary}" song lyrics meaning`;
+      const res = await fetchTimeout(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`)}`, 2500);
+      if (res.ok) {
+        const j = await res.json();
+        const doc = new DOMParser().parseFromString(j.contents || '', 'text/html');
+        webSnippet = Array.from(doc.querySelectorAll('.result__snippet')).map(e => e.textContent.trim()).slice(0, 3).join(' ');
+      }
+    } catch (e) {}
+
+    const blob = `${title} ${lyrics} ${webSnippet}`.trim();
+    let translated = '';
+    if (blob.length > 3) {
+      try {
+        const tRes = await fetchTimeout(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(blob.slice(0, 750))}`, 2200);
+        if (tRes.ok) {
+          const tData = await tRes.json();
+          if (Array.isArray(tData?.[0])) translated = tData[0].map(s => s[0] || '').join(' ');
+        }
+      } catch (e) {}
+    }
+
+    const stop = new Set(['that', 'this', 'with', 'from', 'your', 'have', 'they', 'will', 'what', 'when', 'where', 'there', 'their', 'about', 'would', 'could', 'into', 'just', 'like', 'know', 'want', 'make', 'time', 'song', 'lyrics', 'official', 'video', 'music', 'feat', 'remix']);
+    const unknowns = blob.toLowerCase().replace(/[^a-z\u0900-\u097F\s]/g, ' ').split(/\s+/)
+      .filter(w => w.length >= 4 && !stop.has(w) && !KNOWN_SET.has(w) && !learnedMemory[w]);
+
+    const freq = {};
+    unknowns.forEach(w => { freq[w] = (freq[w] || 0) + 1; });
+    const top3 = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 3).map(x => x[0]);
+
+    for (const w of top3) {
+      try {
+        const wRes = await fetchTimeout(`https://translate.googleapis.com/translate_a/single?client=gtx&sl=auto&tl=en&dt=t&q=${encodeURIComponent(w)}`, 1800);
+        if (wRes.ok) {
+          const wData = await wRes.json();
+          const mean = (wData?.[0]?.[0]?.[0] || '').toLowerCase().trim();
+          if (mean && mean !== w) learnedMemory[w] = mean;
+        }
+      } catch (e) {}
+    }
+
+    return `${webSnippet} ${translated}`;
+  }
+
+  async function classifySong(song) {
+    if (!song) return { language: 'Bollywood', mood: 'Love' };
+    const key = makeKey(song);
+    if (tagCache[key]) {
+      song.aiLanguage = tagCache[key].language;
+      song.aiMood = tagCache[key].mood;
+      return tagCache[key];
+    }
+
+    const title = song.name || '';
+    const artist = song.artist || '';
+    const lyrics = await fetchFastLyrics(title, artist);
+    let fullText = `${title} ${artist} ${lyrics}`;
+    let scores = scoreText(title, fullText);
+
+    const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]);
+    if (!(sorted[0][1] >= 7 && (sorted[0][1] - sorted[1][1]) >= 3)) {
+      const extra = await deepLearnFromWeb(title, artist, lyrics);
+      fullText += ` ${extra}`;
+      scores = scoreText(title, fullText);
+    }
+
+    const low = fullText.toLowerCase();
+    let language = 'Bollywood';
+    const hr = ['haryanvi', 'tanne', 'manne', 'chhora', 'chhori', 'ghana', 'bhola', 'jaat', 'falani', 'laado', 'bairan', 'nimana', 'aala', 'aali', 'todya', 'chodgi', 'modgi', 'kalesh', 'avastha', 'sonipat', 'pabra', 'masoom sharma', 'amanraj gill', 'bintu pabra'].filter(w => low.includes(w)).length;
+    const pb = ['punjabi', 'tenu', 'mainu', 'assi', 'tussi', 'vich', 'naal', 'kudi', 'mundeya', 'gabru', 'jatt', 'jatti', 'sohniye', 'akhiyan', 'hanju', 'pind', 'gallan', 'kinna', 'panu', 'aujla', 'bhullar', 'randhawa', 'dosanjh', 'jordan sandhu'].filter(w => low.includes(w)).length;
+
+    if (hr > 0 && hr >= pb) language = 'Haryanvi';
+    else if (pb > 0) language = 'Punjabi';
+    else if (!/[\u0900-\u097F]/.test(lyrics) && !['ishq', 'pyar', 'dil', 'jaan', 'yaar', 'dard', 'mohabbat', 'tere', 'kaho'].some(w => low.includes(w))) language = 'English';
+
+    let mood = 'Love';
+    let best = -999;
+    ['Love', 'Sad', 'Party', 'Aura'].forEach(m => {
+      if (scores[m] > best) { best = scores[m]; mood = m; }
+    });
+
+    const result = { language, mood };
+    song.aiLanguage = language;
+    song.aiMood = mood;
+    tagCache[key] = result;
+    saveState();
+    return result;
+  }
+
+  function getCachedOrInstant(song) {
+    if (!song) return { language: 'Bollywood', mood: 'Love' };
+    if (song.aiLanguage && song.aiMood) return { language: song.aiLanguage, mood: song.aiMood };
+    const cached = tagCache[makeKey(song)];
+    if (cached) {
+      song.aiLanguage = cached.language;
+      song.aiMood = cached.mood;
+      return cached;
+    }
+    // Instant fallback from 270+ pre-trained words if background scan hasn't reached this song yet
+    const s = scoreText(song.name || '', `${song.name || ''} ${song.artist || ''}`);
+    let mood = 'Love', best = -999;
+    ['Love', 'Sad', 'Party', 'Aura'].forEach(m => { if (s[m] > best) { best = s[m]; mood = m; } });
+    return { language: 'Bollywood', mood };
+  }
+
+  return {
+    async tagLibrary(songsArray) {
+      if (!Array.isArray(songsArray) || songsArray.length === 0) return;
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < songsArray.length) {
+          const i = cursor++;
+          await classifySong(songsArray[i]);
+        }
+      };
+      await Promise.all([worker(), worker(), worker()]);
+      console.log(` SongMind AI: ${songsArray.length} songs tagged & cached.`);
+    },
+
+    async ensureTag(song) {
+      return await classifySong(song);
+    },
+
+    resetHistory(idx) {
+      smartHistory.clear();
+      if (typeof idx === 'number') smartHistory.add(idx);
+    },
+
+    getNextSmartIndex(currIdx, songsList) {
+      if (!Array.isArray(songsList) || songsList.length <= 1) return 0;
+      smartHistory.add(currIdx);
+
+      const currSong = songsList[currIdx];
+      const currMeta = getCachedOrInstant(currSong);
+      const currArtists = (currSong.artist || '').toLowerCase().split(/,|&|feat\.|ft\./i).map(a => a.trim()).filter(a => a.length > 2);
+
+      const candidates = [];
+      for (let i = 0; i < songsList.length; i++) {
+        if (i === currIdx || !songsList[i]) continue;
+        candidates.push({ index: i, meta: getCachedOrInstant(songsList[i]) });
+      }
+
+      // 1. Same Language + Same Mood (e.g. Haryanvi Aura -> Haryanvi Aura)
+      let pool = candidates.filter(c => c.meta.language === currMeta.language && c.meta.mood === currMeta.mood);
+      // 2. Fallback: Same Mood across languages
+      if (pool.length === 0) pool = candidates.filter(c => c.meta.mood === currMeta.mood);
+      // 3. Fallback: Same Language
+      if (pool.length === 0) pool = candidates.filter(c => c.meta.language === currMeta.language);
+      if (pool.length === 0) pool = candidates;
+
+      // Unplayed filter
+      let unplayed = pool.filter(c => !smartHistory.has(c.index));
+      if (unplayed.length === 0) {
+        pool.forEach(c => smartHistory.delete(c.index));
+        unplayed = pool;
+      }
+
+      // Priority to same artist
+      const scored = unplayed.map(c => {
+        let pts = 10;
+        const candArtists = (songsList[c.index].artist || '').toLowerCase().split(/,|&|feat\.|ft\./i).map(a => a.trim());
+        if (currArtists.some(a => candArtists.includes(a))) pts += 35;
+        return { index: c.index, pts };
+      });
+
+      scored.sort((a, b) => b.pts - a.pts);
+      const top = scored.slice(0, Math.min(5, scored.length));
+      const picked = top[Math.floor(Math.random() * top.length)];
+
+      smartHistory.add(picked.index);
+      return picked.index;
+    }
+  };
+})();
 
 /* =================  PLAYER MODE POPUP (STRAIGHT / PLAYLIST) ================= */
 let playerQueueMode = localStorage.getItem('player_queue_mode') || 'straight';
@@ -3220,6 +3562,13 @@ function getActivePlaylistIndices() {
 }
 
 window.nextSong = function() {
+        if (playerQueueMode === 'smart' && playlist.length > 0) {
+        currentIndex = SongMindEngine.getNextSmartIndex(currentIndex, playlist);
+        loadSong(currentIndex);
+        if (audio) audio.play();
+        if (typeof updatePlayIcons === 'function') updatePlayIcons(true);
+        return;
+    }
     if (playerQueueMode === 'playlist') {
         const plIndices = getActivePlaylistIndices();
         if (plIndices.length > 0) {
@@ -3314,6 +3663,14 @@ function findPlayerModeButton() {
 function updatePlayerModeButtonUI(btn) {
     if (!btn) return;
     const icon = btn.tagName === 'I' ? btn : btn.querySelector('i');
+        if (playerQueueMode === 'smart') {
+        btn.style.color = '#1DB954';
+        if (icon) {
+            icon.className = 'fas fa-random';
+            icon.style.color = '#1DB954';
+        }
+    } else 
+
     if (playerQueueMode === 'playlist') {
         btn.style.color = '#ff3b30';
         if (icon) {
@@ -3336,7 +3693,10 @@ function setPlayerQueueMode(mode) {
 
     const btn = findPlayerModeButton();
     updatePlayerModeButtonUI(btn);
-
+        if (mode === 'smart') {
+        SongMindEngine.resetHistory(currentIndex);
+        if (typeof showTempMessage === 'function') showTempMessage(` Smart Shuffle: AI Mood & Vibe`);
+    } else 
     if (mode === 'playlist') {
         resetPlaylistCycle(true);
         const plIndices = getActivePlaylistIndices();
@@ -3398,7 +3758,7 @@ function openPlayerModePopup(btn) {
 
     const isStraight = playerQueueMode === 'straight';
     const isPlaylist = playerQueueMode === 'playlist';
-
+const isSmart = playerQueueMode === 'smart';
     popup.innerHTML = `
         <div id="mode-opt-straight" style="padding: 15px 18px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 15px; font-weight: ${isStraight ? '700' : '500'}; cursor: pointer; border-bottom: 0.5px solid rgba(255,255,255,0.16);">
             <div style="display: flex; align-items: center; gap: 10px;">
@@ -3414,6 +3774,13 @@ function openPlayerModePopup(btn) {
             </div>
             ${isPlaylist ? '<i class="fas fa-check" style="color: #ff3b30; font-size: 14px;"></i>' : ''}
         </div>
+                <div id="mode-opt-smart" style="padding: 14px 18px; display: flex; align-items: center; justify-content: space-between; color: white; font-size: 14.5px; font-weight: ${isSmart ? '700' : '500'}; cursor: pointer; border-top: 0.5px solid rgba(255,255,255,0.16);">
+            <div style="display: flex; align-items: center; gap: 10px;">
+                <i class="fas fa-random" style="width: 16px; color: #1DB954;"></i>
+                <span>Smart Shuffle</span>
+            </div>
+            ${isSmart ? '<i class="fas fa-check" style="color: #1DB954; font-size: 14px;"></i>' : ''}
+        </div>
     `;
 
     document.body.appendChild(popup);
@@ -3425,7 +3792,10 @@ function openPlayerModePopup(btn) {
 
     document.getElementById('mode-opt-straight').onclick = () => setPlayerQueueMode('straight');
     document.getElementById('mode-opt-playlist').onclick = () => setPlayerQueueMode('playlist');
+    document.getElementById('mode-opt-smart').onclick = () => setPlayerQueueMode('smart');
 }
+
+
 
 document.addEventListener('click', (e) => {
     const modeBtn = findPlayerModeButton();
